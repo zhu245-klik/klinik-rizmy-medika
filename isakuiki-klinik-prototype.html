@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RIZMY MEDIKA — Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F7F6F2;
+    --surface:#FFFFFF;
+    --surface-alt:#EFEDE6;
+    --ink:#1C2420;
+    --ink-soft:#5B655F;
+    --ink-faint:#8B948D;
+    --teal:#7C9473;
+    --teal-dark:#4A5A40;
+    --teal-soft:#E7EDE1;
+    --amber:#E2963C;
+    --amber-soft:#FBEDD9;
+    --red:#C0453A;
+    --red-soft:#FBE7E4;
+    --border:#DEDAD0;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;}
+  html,body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    margin:0;
+    color:var(--teal-dark);
+    letter-spacing:-0.01em;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  button{font-family:inherit;}
+  a{color:inherit;}
+
+  /* ---------- App shell ---------- */
+  .app{min-height:100vh;display:flex;flex-direction:column;}
+
+  .topbar{
+    background:var(--teal-dark);
+    color:#fff;
+    padding:14px 24px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:10px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand-mark{
+    width:32px;height:32px;border-radius:8px;
+    background:var(--amber);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Space Grotesk';font-weight:700;color:var(--teal-dark);
+    font-size:15px;
+  }
+  .brand-name{font-family:'Space Grotesk';font-weight:600;font-size:16px;color:#fff;}
+  .brand-sub{font-size:11px;color:#B9CBC7;margin-top:-2px;}
+
+  .role-switch{
+    display:flex;gap:4px;background:rgba(255,255,255,0.08);padding:4px;border-radius:10px;
+  }
+  .role-switch button{
+    border:none;background:transparent;color:#C7D6D3;
+    padding:7px 14px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;
+    transition:background .15s, color .15s;
+  }
+  .role-switch button.active{background:var(--amber);color:var(--teal-dark);}
+  .role-switch button:hover:not(.active){background:rgba(255,255,255,0.12);}
+
+  .layout{flex:1;display:flex;min-height:0;}
+
+  .sidebar{
+    width:220px;background:var(--surface);border-right:1px solid var(--border);
+    padding:18px 12px;flex-shrink:0;
+  }
+  .sidebar-label{
+    font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint);
+    padding:0 10px;margin-bottom:8px;font-weight:600;
+  }
+  .nav-item{
+    display:flex;align-items:center;gap:10px;padding:10px 10px;border-radius:8px;
+    font-size:14px;font-weight:500;color:var(--ink-soft);cursor:pointer;margin-bottom:2px;
+    border:none;background:none;width:100%;text-align:left;
+  }
+  .nav-item:hover{background:var(--surface-alt);}
+  .nav-item.active{background:var(--teal-soft);color:var(--teal-dark);font-weight:600;}
+  .nav-dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.5;flex-shrink:0;}
+
+  .main{flex:1;padding:26px 30px;overflow-y:auto;}
+  .view{display:none;}
+  .view.active{display:block;animation:fade .2s ease;}
+  @keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+
+  .page-head{margin-bottom:22px;}
+  .page-head h1{font-size:22px;}
+  .page-head p{color:var(--ink-soft);font-size:13.5px;margin-top:4px;}
+
+  .grid{display:grid;gap:16px;}
+  .grid-2{grid-template-columns:1fr 1fr;}
+  .grid-3{grid-template-columns:repeat(3,1fr);}
+
+  .card{
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:18px;
+  }
+  .card h3{font-size:14.5px;margin-bottom:12px;}
+
+  /* ---------- Queue board (signature element) ---------- */
+  .queue-board{
+    background:var(--teal-dark);
+    border-radius:14px;
+    padding:20px 22px;
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:16px;
+    margin-bottom:22px;
+  }
+  .queue-slot{
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:10px;
+    padding:14px 16px;
+  }
+  .queue-slot .poli-name{color:#9FC0BA;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;}
+  .queue-slot .now-serving{
+    font-family:'IBM Plex Mono';font-weight:700;font-size:34px;color:var(--amber);
+    line-height:1.1;margin-top:6px;
+  }
+  .queue-slot .waiting-count{color:#B9CBC7;font-size:12px;margin-top:4px;}
+
+  /* ---------- Tables / lists ---------- */
+  .list{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface);}
+  .list-row{
+    display:flex;align-items:center;gap:14px;padding:13px 16px;
+    border-bottom:1px solid var(--border);
+  }
+  .list-row:last-child{border-bottom:none;}
+  .list-row:hover{background:var(--surface-alt);}
+  .queue-num{
+    font-family:'IBM Plex Mono';font-weight:700;font-size:15px;color:var(--teal-dark);
+    background:var(--teal-soft);border-radius:6px;padding:4px 9px;min-width:34px;text-align:center;
+  }
+  .row-main{flex:1;min-width:0;}
+  .row-name{font-weight:600;font-size:14px;}
+  .row-sub{font-size:12.5px;color:var(--ink-soft);margin-top:1px;}
+  .badge{
+    font-size:11px;font-weight:600;padding:4px 9px;border-radius:20px;white-space:nowrap;
+  }
+  .badge-wait{background:var(--surface-alt);color:var(--ink-soft);}
+  .badge-called{background:var(--amber-soft);color:#9A5F16;}
+  .badge-done{background:var(--teal-soft);color:var(--teal-dark);}
+  .badge-unpaid{background:var(--red-soft);color:var(--red);}
+  .badge-paid{background:var(--teal-soft);color:var(--teal-dark);}
+
+  .btn{
+    border:none;border-radius:7px;padding:9px 15px;font-size:13px;font-weight:600;
+    cursor:pointer;transition:opacity .15s; display:inline-flex;align-items:center;gap:6px;
+  }
+  .btn-primary{background:var(--teal);color:#fff;}
+  .btn-primary:hover{opacity:.9;}
+  .btn-amber{background:var(--amber);color:var(--teal-dark);}
+  .btn-amber:hover{opacity:.9;}
+  .btn-ghost{background:var(--surface-alt);color:var(--ink);}
+  .btn-ghost:hover{background:var(--border);}
+  .btn-sm{padding:6px 11px;font-size:12.5px;}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+
+  /* ---------- Forms ---------- */
+  label{font-size:12.5px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:5px;}
+  input,select,textarea{
+    width:100%;border:1px solid var(--border);border-radius:7px;padding:9px 11px;
+    font-family:inherit;font-size:13.5px;background:var(--surface);color:var(--ink);
+  }
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--teal);outline-offset:1px;}
+  textarea{resize:vertical;min-height:64px;}
+  .field{margin-bottom:14px;}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+
+  /* ---------- Allergy banner ---------- */
+  .allergy-banner{
+    background:var(--red-soft);border:1px solid #EFC3BD;border-radius:9px;
+    padding:12px 15px;display:flex;gap:10px;align-items:flex-start;margin-bottom:18px;
+  }
+  .allergy-banner .icon{
+    width:22px;height:22px;border-radius:50%;background:var(--red);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;
+  }
+  .allergy-banner .title{font-weight:700;color:var(--red);font-size:13.5px;}
+  .allergy-banner .items{font-size:13px;color:#7A2E27;margin-top:2px;}
+  .allergy-none{
+    background:var(--surface-alt);border:1px solid var(--border);border-radius:9px;
+    padding:10px 15px;font-size:12.5px;color:var(--ink-soft);margin-bottom:18px;
+  }
+
+  .section-title{
+    font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--teal-dark);margin:20px 0 10px;padding-top:14px;border-top:1px solid var(--border);
+  }
+  .section-title:first-of-type{border-top:none;margin-top:0;padding-top:0;}
+
+  .empty{
+    text-align:center;padding:40px 20px;color:var(--ink-faint);font-size:13.5px;
+  }
+
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;}
+  .stat-card .num{font-family:'IBM Plex Mono';font-weight:700;font-size:26px;color:var(--teal-dark);}
+  .stat-card .label{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+
+  .rx-item{display:flex;gap:10px;align-items:center;background:var(--surface-alt);border-radius:7px;padding:8px 10px;margin-bottom:6px;}
+  .rx-item span{font-size:13px;}
+  .rx-item .rx-name{font-weight:600;flex:1;}
+
+  .toast{
+    position:fixed;bottom:22px;right:22px;background:var(--teal-dark);color:#fff;
+    padding:12px 18px;border-radius:9px;font-size:13.5px;font-weight:500;
+    box-shadow:0 8px 24px rgba(0,0,0,0.18);opacity:0;transform:translateY(10px);
+    transition:all .25s;pointer-events:none;z-index:50;
+  }
+  .toast.show{opacity:1;transform:none;}
+
+  .poli-tabs{display:flex;gap:6px;margin-bottom:16px;}
+  .poli-tab{
+    border:1px solid var(--border);background:var(--surface);border-radius:8px;
+    padding:7px 14px;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;
+  }
+  .poli-tab.active{background:var(--teal);color:#fff;border-color:var(--teal);}
+
+  @media (max-width:860px){
+    .layout{flex-direction:column;}
+    .sidebar{width:100%;display:flex;overflow-x:auto;gap:4px;padding:10px 12px;border-right:none;border-bottom:1px solid var(--border);}
+    .sidebar-label{display:none;}
+    .nav-item{width:auto;white-space:nowrap;}
+    .grid-2,.grid-3{grid-template-columns:1fr;}
+    .queue-board{grid-template-columns:1fr;}
+    .field-row{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">✚</div>
+      <div>
+        <div class="brand-name">RIZMY MEDIKA</div>
+        <div class="brand-sub">Beyond Medical Care</div>
+      </div>
+    </div>
+    <div class="role-switch" id="roleSwitch"></div>
+  </div>
+
+  <div class="layout">
+    <div class="sidebar">
+      <div class="sidebar-label">Menu</div>
+      <div id="sidebarNav"></div>
+    </div>
+    <div class="main" id="mainArea"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   DATA MOCK — semua data disimpan di memori, bukan localStorage
+   ========================================================= */
+const POLI = [
+  {id:1, kode:'kandungan', nama:'Kebidanan & Kandungan', dokter:'dr. Sarah Amelia, Sp.OG'},
+  {id:2, kode:'mata', nama:'Mata', dokter:'dr. Bagus Wirawan, Sp.M'},
+  {id:3, kode:'gigi', nama:'Gigi', dokter:'drg. Novita Putri'},
+];
+
+let state = {
+  patients: [
+    {id:'p1', no_rm:'RM-000041', nama:'Ratna Wulandari', nik:'6401xxxxxxxx0001', tgl_lahir:'1994-03-12', jk:'P',
+      alergi:[{alergen:'Amoxicillin', jenis:'Obat', keparahan:'Sedang', reaksi:'Gatal-gatal & bentol'}]},
+    {id:'p2', no_rm:'RM-000102', nama:'Yusuf Hidayat', nik:'6401xxxxxxxx0002', tgl_lahir:'1988-07-02', jk:'L', alergi:[]},
+    {id:'p3', no_rm:'RM-000077', nama:'Siti Aminah', nik:'6401xxxxxxxx0003', tgl_lahir:'1999-11-25', jk:'P', alergi:[]},
+  ],
+  nextRm: 103,
+  visits: [
+    {id:'v1', patientId:'p1', poliId:1, noAntrian:1, status:'menunggu', keluhan:'Kontrol kehamilan rutin, usia kandungan sekitar 20 minggu',
+      vitals:{tensi:'118/76', nadi:78, suhu:36.6, bb:61, tb:158}, soap:null, poliDetail:null, procedures:[], prescription:[], payment:null},
+    {id:'v2', patientId:'p2', poliId:2, noAntrian:1, status:'menunggu', keluhan:'Mata kanan merah dan berair sejak 3 hari',
+      vitals:{tensi:'124/80', nadi:82, suhu:36.8, bb:70, tb:170}, soap:null, poliDetail:null, procedures:[], prescription:[], payment:null},
+    {id:'v3', patientId:'p3', poliId:3, noAntrian:1, status:'selesai', keluhan:'Nyeri gigi geraham bawah kanan',
+      vitals:{tensi:'110/70', nadi:76, suhu:36.5, bb:52, tb:155},
+      soap:{s:'Nyeri gigi geraham kanan bawah sejak 2 hari, nyeri saat mengunyah.', o:'Karies profunda gigi 46, perkusi (+).',
+            a:'Pulpitis reversibel gigi 46.', p:'Tumpatan sementara, kontrol 1 minggu, edukasi hindari makan sisi kanan.'},
+      poliDetail:{status_gigi:'Karies profunda pada gigi 46'}, procedures:[{nama:'Tumpatan sementara', biaya:150000}],
+      prescription:[{obat:'Asam Mefenamat', dosis:'500mg', aturan:'3x1 sesudah makan', jumlah:'10 tablet'}],
+      payment:null},
+  ],
+};
+
+let ui = {
+  role: 'petugas',
+  petugasView: 'antrian',
+  dokterPoli: 1,
+  dokterView: 'antrian',
+  activeVisitId: null,
+  kasirView: 'tunggu',
+  adminView: 'staff',
+};
+
+/* =========================================================
+   HELPERS
+   ========================================================= */
+function poliById(id){ return POLI.find(p=>p.id===id); }
+function patientById(id){ return state.patients.find(p=>p.id===id); }
+function visitById(id){ return state.visits.find(v=>v.id===id); }
+function fmtRp(n){ return 'Rp' + n.toLocaleString('id-ID'); }
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+function esc(s){ return (s||'').toString().replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* =========================================================
+   TOP LEVEL RENDER
+   ========================================================= */
+const ROLES = [
+  {id:'petugas', label:'Petugas'},
+  {id:'dokter', label:'Dokter'},
+  {id:'kasir', label:'Kasir'},
+  {id:'admin', label:'Admin'},
+];
+
+function renderRoleSwitch(){
+  const el = document.getElementById('roleSwitch');
+  el.innerHTML = ROLES.map(r=>`<button class="${r.id===ui.role?'active':''}" onclick="setRole('${r.id}')">${r.label}</button>`).join('');
+}
+function setRole(role){
+  ui.role = role;
+  renderRoleSwitch();
+  renderSidebar();
+  renderMain();
+}
+
+const NAVS = {
+  petugas: [
+    {id:'antrian', label:'Antrian Hari Ini'},
+    {id:'daftar', label:'Cari / Daftar Pasien'},
+  ],
+  dokter: [
+    {id:'antrian', label:'Antrian Poli Saya'},
+  ],
+  kasir: [
+    {id:'tunggu', label:'Menunggu Bayar'},
+    {id:'lunas', label:'Riwayat Pembayaran'},
+  ],
+  admin: [
+    {id:'staff', label:'Kelola Staff'},
+    {id:'laporan', label:'Laporan'},
+  ],
+};
+
+function renderSidebar(){
+  const el = document.getElementById('sidebarNav');
+  const items = NAVS[ui.role];
+  const activeKey = ui.role+'View';
+  el.innerHTML = items.map(it=>{
+    const active = ui[activeKey]===it.id;
+    return `<button class="nav-item ${active?'active':''}" onclick="setSubView('${it.id}')">
+      <span class="nav-dot"></span>${it.label}
+    </button>`;
+  }).join('');
+}
+function setSubView(id){
+  ui[ui.role+'View'] = id;
+  ui.activeVisitId = null;
+  renderSidebar();
+  renderMain();
+}
+
+function renderMain(){
+  const el = document.getElementById('mainArea');
+  if(ui.role==='petugas') el.innerHTML = renderPetugas();
+  if(ui.role==='dokter') el.innerHTML = renderDokter();
+  if(ui.role==='kasir') el.innerHTML = renderKasir();
+  if(ui.role==='admin') el.innerHTML = renderAdmin();
+}
+
+/* =========================================================
+   PETUGAS
+   ========================================================= */
+function renderPetugas(){
+  if(ui.petugasView==='antrian') return renderPetugasAntrian();
+  if(ui.petugasView==='daftar') return renderPetugasDaftar();
+}
+
+function renderPetugasAntrian(){
+  const board = POLI.map(p=>{
+    const visits = state.visits.filter(v=>v.poliId===p.id);
+    const waiting = visits.filter(v=>v.status==='menunggu').length;
+    const serving = visits.find(v=>v.status==='dipanggil');
+    return `<div class="queue-slot">
+      <div class="poli-name">${esc(p.nama)}</div>
+      <div class="now-serving">${serving? '#'+serving.noAntrian : '—'}</div>
+      <div class="waiting-count">${waiting} pasien menunggu</div>
+    </div>`;
+  }).join('');
+
+  const rows = state.visits.filter(v=>v.status!=='selesai').map(v=>{
+    const pat = patientById(v.patientId);
+    const p = poliById(v.poliId);
+    return `<div class="list-row">
+      <div class="queue-num mono">${v.noAntrian}</div>
+      <div class="row-main">
+        <div class="row-name">${esc(pat.nama)} <span style="color:var(--ink-faint);font-weight:400;">· ${esc(pat.no_rm)}</span></div>
+        <div class="row-sub">${esc(p.nama)} — ${esc(v.keluhan)}</div>
+      </div>
+      <span class="badge ${v.status==='menunggu'?'badge-wait':'badge-called'}">${v.status==='menunggu'?'Menunggu':'Dipanggil'}</span>
+    </div>`;
+  }).join('') || `<div class="empty">Belum ada antrian aktif hari ini.</div>`;
+
+  return `
+    <div class="page-head">
+      <h1>Antrian Hari Ini</h1>
+      <p>Ringkasan antrian tiap poliklinik dan daftar pasien yang belum diperiksa.</p>
+    </div>
+    <div class="queue-board">${board}</div>
+    <div class="card">
+      <h3>Daftar Tunggu</h3>
+      <div class="list">${rows}</div>
+    </div>
+  `;
+}
+
+function renderPetugasDaftar(){
+  const patRows = state.patients.map(p=>`
+    <div class="list-row">
+      <div class="row-main">
+        <div class="row-name">${esc(p.nama)}</div>
+        <div class="row-sub">${esc(p.no_rm)} · ${esc(p.nik)} · ${p.jk==='P'?'Perempuan':'Laki-laki'}</div>
+      </div>
+      ${p.alergi.length? `<span class="badge badge-unpaid">Alergi (${p.alergi.length})</span>`:''}
+      <button class="btn btn-primary btn-sm" onclick="openDaftarKunjungan('${p.id}')">Daftarkan Kunjungan</button>
+    </div>`).join('');
+
+  return `
+    <div class="page-head">
+      <h1>Cari / Daftar Pasien</h1>
+      <p>Cari pasien lama untuk daftar kunjungan baru, atau tambahkan pasien baru.</p>
+    </div>
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>Pasien Terdaftar</h3>
+        <input placeholder="Cari nama atau NIK..." style="margin-bottom:12px;" oninput="filterPatients(this.value)">
+        <div class="list" id="patientList">${patRows}</div>
+      </div>
+      <div class="card" id="daftarPanel">
+        ${renderDaftarPanel()}
+      </div>
+    </div>
+  `;
+}
+
+function filterPatients(q){
+  q = q.toLowerCase();
+  const el = document.getElementById('patientList');
+  const filtered = state.patients.filter(p=>p.nama.toLowerCase().includes(q) || p.nik.toLowerCase().includes(q));
+  el.innerHTML = filtered.map(p=>`
+    <div class="list-row">
+      <div class="row-main">
+        <div class="row-name">${esc(p.nama)}</div>
+        <div class="row-sub">${esc(p.no_rm)} · ${esc(p.nik)} · ${p.jk==='P'?'Perempuan':'Laki-laki'}</div>
+      </div>
+      ${p.alergi.length? `<span class="badge badge-unpaid">Alergi (${p.alergi.length})</span>`:''}
+      <button class="btn btn-primary btn-sm" onclick="openDaftarKunjungan('${p.id}')">Daftarkan Kunjungan</button>
+    </div>`).join('') || `<div class="empty">Pasien tidak ditemukan. Tambahkan sebagai pasien baru →</div>`;
+}
+
+let daftarState = {patientId:null, patientNamaBaru:''};
+
+function renderDaftarPanel(){
+  if(!daftarState.patientId){
+    return `
+      <h3>Pasien Baru</h3>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">Belum ketemu pasien di daftar? Tambahkan sebagai pasien baru.</p>
+      <div class="field"><label>Nama lengkap</label><input id="newPatNama" placeholder="Nama pasien"></div>
+      <div class="field-row">
+        <div class="field"><label>NIK</label><input id="newPatNik" placeholder="16 digit NIK"></div>
+        <div class="field"><label>Tanggal lahir</label><input id="newPatTgl" type="date"></div>
+      </div>
+      <div class="field"><label>Jenis kelamin</label>
+        <select id="newPatJk"><option value="P">Perempuan</option><option value="L">Laki-laki</option></select>
+      </div>
+      <button class="btn btn-primary" onclick="createPatient()">Simpan Pasien Baru</button>
+    `;
+  }
+  const pat = patientById(daftarState.patientId);
+  return `
+    <h3>Daftarkan Kunjungan — ${esc(pat.nama)}</h3>
+    ${pat.alergi.length? `
+      <div class="allergy-banner">
+        <div class="icon">!</div>
+        <div><div class="title">Riwayat Alergi Tercatat</div>
+        <div class="items">${pat.alergi.map(a=>esc(a.alergen)+' — '+esc(a.reaksi)).join('; ')}</div></div>
+      </div>` : `<div class="allergy-none">Tidak ada riwayat alergi tercatat.</div>`}
+    <div class="field"><label>Poliklinik tujuan</label>
+      <select id="newVisitPoli">${POLI.map(p=>`<option value="${p.id}">${esc(p.nama)} — ${esc(p.dokter)}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>Keluhan awal</label><textarea id="newVisitKeluhan" placeholder="Keluhan yang disampaikan pasien..."></textarea></div>
+    <div class="section-title">Vital Sign</div>
+    <div class="field-row">
+      <div class="field"><label>Tensi (mmHg)</label><input id="vTensi" placeholder="120/80"></div>
+      <div class="field"><label>Nadi (/menit)</label><input id="vNadi" type="number" placeholder="80"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Suhu (°C)</label><input id="vSuhu" type="number" step="0.1" placeholder="36.5"></div>
+      <div class="field"><label>BB (kg) / TB (cm)</label><input id="vBbTb" placeholder="60 / 160"></div>
+    </div>
+    <button class="btn btn-primary" onclick="createVisit()">Simpan &amp; Beri Nomor Antrian</button>
+    <button class="btn btn-ghost" onclick="daftarState.patientId=null; renderMain();">Batal</button>
+  `;
+}
+function openDaftarKunjungan(patientId){
+  daftarState = {patientId, patientNamaBaru:''};
+  document.getElementById('daftarPanel').innerHTML = renderDaftarPanel();
+}
+function createPatient(){
+  const nama = document.getElementById('newPatNama').value.trim();
+  if(!nama){ showToast('Nama pasien wajib diisi'); return; }
+  const id = 'p'+(state.patients.length+1)+'_'+Date.now();
+  const no_rm = 'RM-'+String(state.nextRm++).padStart(6,'0');
+  const pat = {
+    id, no_rm, nama,
+    nik: document.getElementById('newPatNik').value || '-',
+    tgl_lahir: document.getElementById('newPatTgl').value || '-',
+    jk: document.getElementById('newPatJk').value,
+    alergi: [],
+  };
+  state.patients.push(pat);
+  showToast('Pasien baru tersimpan: '+no_rm);
+  daftarState.patientId = id;
+  renderMain();
+}
+function createVisit(){
+  const pat = patientById(daftarState.patientId);
+  const poliId = parseInt(document.getElementById('newVisitPoli').value);
+  const keluhan = document.getElementById('newVisitKeluhan').value.trim();
+  if(!keluhan){ showToast('Keluhan awal wajib diisi'); return; }
+  const existing = state.visits.filter(v=>v.poliId===poliId);
+  const noAntrian = existing.length ? Math.max(...existing.map(v=>v.noAntrian))+1 : 1;
+  const visit = {
+    id:'v'+Date.now(), patientId:pat.id, poliId, noAntrian, status:'menunggu',
+    keluhan,
+    vitals:{
+      tensi:document.getElementById('vTensi').value||'-',
+      nadi:document.getElementById('vNadi').value||'-',
+      suhu:document.getElementById('vSuhu').value||'-',
+      bb:document.getElementById('vBbTb').value||'-', tb:''
+    },
+    soap:null, poliDetail:null, procedures:[], prescription:[], payment:null,
+  };
+  state.visits.push(visit);
+  showToast('Nomor antrian '+noAntrian+' diberikan untuk '+poliById(poliId).nama);
+  daftarState.patientId = null;
+  ui.petugasView = 'antrian';
+  renderSidebar();
+  renderMain();
+}
+
+/* =========================================================
+   DOKTER
+   ========================================================= */
+function renderDokter(){
+  if(ui.activeVisitId) return renderPemeriksaan(ui.activeVisitId);
+
+  const tabs = POLI.map(p=>`<button class="poli-tab ${ui.dokterPoli===p.id?'active':''}" onclick="setDokterPoli(${p.id})">${esc(p.nama)}</button>`).join('');
+  const poli = poliById(ui.dokterPoli);
+  const visits = state.visits.filter(v=>v.poliId===ui.dokterPoli && v.status!=='selesai');
+  const rows = visits.map(v=>{
+    const pat = patientById(v.patientId);
+    return `<div class="list-row">
+      <div class="queue-num mono">${v.noAntrian}</div>
+      <div class="row-main">
+        <div class="row-name">${esc(pat.nama)} ${pat.alergi.length?'<span class="badge badge-unpaid" style="margin-left:6px;">Alergi</span>':''}</div>
+        <div class="row-sub">${esc(v.keluhan)}</div>
+      </div>
+      <span class="badge ${v.status==='menunggu'?'badge-wait':'badge-called'}">${v.status==='menunggu'?'Menunggu':'Dipanggil'}</span>
+      <button class="btn btn-primary btn-sm" onclick="callVisit('${v.id}')">${v.status==='menunggu'?'Panggil':'Buka'}</button>
+    </div>`;
+  }).join('') || `<div class="empty">Tidak ada pasien menunggu di poli ini.</div>`;
+
+  return `
+    <div class="page-head">
+      <h1>Antrian Poli — ${esc(poli.nama)}</h1>
+      <p>${esc(poli.dokter)}</p>
+    </div>
+    <div class="poli-tabs">${tabs}</div>
+    <div class="card">
+      <h3>Daftar Tunggu</h3>
+      <div class="list">${rows}</div>
+    </div>
+  `;
+}
+function setDokterPoli(id){ ui.dokterPoli = id; renderMain(); }
+function callVisit(id){
+  const v = visitById(id);
+  v.status = 'dipanggil';
+  ui.activeVisitId = id;
+  renderMain();
+}
+
+function renderPemeriksaan(visitId){
+  const v = visitById(visitId);
+  const pat = patientById(v.patientId);
+  const poli = poliById(v.poliId);
+
+  const allergyBlock = pat.alergi.length ? `
+    <div class="allergy-banner">
+      <div class="icon">!</div>
+      <div><div class="title">Riwayat Alergi Tercatat</div>
+      <div class="items">${pat.alergi.map(a=>`${esc(a.alergen)} (${esc(a.keparahan)}) — ${esc(a.reaksi)}`).join('; ')}</div></div>
+    </div>` : `<div class="allergy-none">Tidak ada riwayat alergi tercatat pada pasien ini.</div>`;
+
+  // Riwayat kunjungan HANYA di poli yang sama (aturan RLS yang kita sepakati)
+  const riwayat = state.visits.filter(rv=>rv.patientId===pat.id && rv.poliId===v.poliId && rv.id!==v.id);
+  const riwayatBlock = riwayat.length ? riwayat.map(rv=>`
+    <div class="list-row"><div class="row-main">
+      <div class="row-name">Kunjungan #${rv.noAntrian}</div>
+      <div class="row-sub">${rv.soap? esc(rv.soap.a) : 'Belum ada catatan'}</div>
+    </div></div>`).join('') : `<div class="empty" style="padding:16px;">Belum ada riwayat kunjungan pasien ini di poli ${esc(poli.nama)}.</div>`;
+
+  let detailFields = '';
+  if(poli.kode==='kandungan'){
+    detailFields = `
+      <div class="section-title">Detail Kebidanan &amp; Kandungan</div>
+      <div class="field"><label>Jenis kunjungan</label>
+        <select id="dJenis"><option value="anc">ANC (Kontrol Hamil)</option><option value="promil">Program Hamil</option><option value="ginekologi_umum">Ginekologi Umum</option><option value="kb">KB</option><option value="lainnya">Lainnya</option></select>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>GPA</label><input id="dGpa" placeholder="G2P1A0"></div>
+        <div class="field"><label>Usia kehamilan (minggu)</label><input id="dUsia" type="number" placeholder="20"></div>
+      </div>
+      <div class="field"><label>Catatan USG</label><textarea id="dUsg" placeholder="Hasil pemeriksaan USG..."></textarea></div>
+    `;
+  } else if(poli.kode==='mata'){
+    detailFields = `
+      <div class="section-title">Detail Pemeriksaan Mata</div>
+      <div class="field-row">
+        <div class="field"><label>Visus OD (kanan)</label><input id="dVisusOd" placeholder="6/6"></div>
+        <div class="field"><label>Visus OS (kiri)</label><input id="dVisusOs" placeholder="6/6"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>TIO OD</label><input id="dTioOd" type="number" placeholder="16"></div>
+        <div class="field"><label>TIO OS</label><input id="dTioOs" type="number" placeholder="16"></div>
+      </div>
+      <div class="field"><label>Segmen anterior / funduskopi</label><textarea id="dFundus" placeholder="Catatan pemeriksaan..."></textarea></div>
+    `;
+  } else {
+    detailFields = `
+      <div class="section-title">Detail Pemeriksaan Gigi</div>
+      <div class="field"><label>Status gigi / odontogram (catatan bebas untuk prototype)</label><textarea id="dGigiStatus" placeholder="misal: Karies profunda gigi 46"></textarea></div>
+    `;
+  }
+
+  const rxRows = (v._rxDraft||[]).map((r,i)=>`
+    <div class="rx-item"><span class="rx-name">${esc(r.obat)}</span><span>${esc(r.dosis)}</span><span>${esc(r.aturan)}</span><span>${esc(r.jumlah)}</span>
+    <button class="btn btn-ghost btn-sm" onclick="removeRx('${v.id}',${i})">Hapus</button></div>`).join('');
+
+  return `
+    <button class="btn btn-ghost btn-sm" style="margin-bottom:14px;" onclick="ui.activeVisitId=null; renderMain();">&larr; Kembali ke antrian</button>
+    <div class="page-head">
+      <h1>${esc(pat.nama)} <span class="mono" style="font-size:14px;color:var(--ink-faint);">· ${esc(pat.no_rm)}</span></h1>
+      <p>${esc(poli.nama)} · Antrian #${v.noAntrian} · ${pat.jk==='P'?'Perempuan':'Laki-laki'}, lahir ${esc(pat.tgl_lahir)}</p>
+    </div>
+
+    ${allergyBlock}
+
+    <div class="grid grid-2" style="align-items:start;">
+      <div>
+        <div class="card">
+          <h3>Vital Sign (dari petugas)</h3>
+          <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:13px;">
+            <div><b>Tensi:</b> ${esc(v.vitals.tensi)}</div>
+            <div><b>Nadi:</b> ${esc(v.vitals.nadi)}/mnt</div>
+            <div><b>Suhu:</b> ${esc(v.vitals.suhu)}°C</div>
+            <div><b>BB/TB:</b> ${esc(v.vitals.bb)}</div>
+          </div>
+          <div class="section-title">Keluhan Awal</div>
+          <p style="font-size:13.5px;color:var(--ink-soft);">${esc(v.keluhan)}</p>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Rekam Medis (SOAP)</h3>
+          <div class="field"><label>Subjective</label><textarea id="soapS" placeholder="Keluhan versi dokter...">${v.soap? esc(v.soap.s):''}</textarea></div>
+          <div class="field"><label>Objective</label><textarea id="soapO" placeholder="Hasil pemeriksaan fisik...">${v.soap? esc(v.soap.o):''}</textarea></div>
+          <div class="field"><label>Assessment</label><textarea id="soapA" placeholder="Diagnosis...">${v.soap? esc(v.soap.a):''}</textarea></div>
+          <div class="field"><label>Plan</label><textarea id="soapP" placeholder="Rencana terapi...">${v.soap? esc(v.soap.p):''}</textarea></div>
+          ${detailFields}
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h3>Riwayat di Poli ${esc(poli.nama)}</h3>
+          <p style="font-size:12px;color:var(--ink-faint);margin-bottom:8px;">Hanya kunjungan di poli ini yang ditampilkan.</p>
+          <div class="list">${riwayatBlock}</div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Tindakan Medis</h3>
+          <div class="field-row">
+            <div class="field"><label>Nama tindakan</label><input id="procNama" placeholder="misal: Tumpatan sementara"></div>
+            <div class="field"><label>Biaya (Rp)</label><input id="procBiaya" type="number" placeholder="150000"></div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="addProcedure('${v.id}')">+ Tambah Tindakan</button>
+          <div style="margin-top:10px;">${v.procedures.map(p=>`<div class="rx-item"><span class="rx-name">${esc(p.nama)}</span><span>${fmtRp(p.biaya)}</span></div>`).join('') || '<p style="font-size:12.5px;color:var(--ink-faint);">Belum ada tindakan.</p>'}</div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Resep Obat</h3>
+          <p style="font-size:12px;color:var(--ink-faint);margin-bottom:8px;">Dicatat untuk rekam medis &amp; dicetak — pasien tebus di apotek luar.</p>
+          <div class="field"><label>Nama obat</label><input id="rxObat" placeholder="misal: Asam Mefenamat"></div>
+          <div class="field-row">
+            <div class="field"><label>Dosis</label><input id="rxDosis" placeholder="500mg"></div>
+            <div class="field"><label>Jumlah</label><input id="rxJumlah" placeholder="10 tablet"></div>
+          </div>
+          <div class="field"><label>Aturan pakai</label><input id="rxAturan" placeholder="3x1 sesudah makan"></div>
+          <button class="btn btn-ghost btn-sm" onclick="addRx('${v.id}')">+ Tambah ke Resep</button>
+          <div style="margin-top:10px;">${rxRows || (v.prescription.length? v.prescription.map(r=>`<div class="rx-item"><span class="rx-name">${esc(r.obat)}</span><span>${esc(r.dosis)}</span><span>${esc(r.aturan)}</span><span>${esc(r.jumlah)}</span></div>`).join('') : '<p style="font-size:12.5px;color:var(--ink-faint);">Belum ada resep.</p>')}</div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Alergi Baru?</h3>
+          <p style="font-size:12px;color:var(--ink-faint);margin-bottom:8px;">Jika ditemukan alergi baru, catat di sini — akan terlihat di poli manapun, bukan cuma di SOAP kunjungan ini.</p>
+          <div class="field-row">
+            <div class="field"><label>Nama alergen</label><input id="alNama" placeholder="misal: Penisilin"></div>
+            <div class="field"><label>Tingkat keparahan</label>
+              <select id="alTingkat"><option value="Ringan">Ringan</option><option value="Sedang">Sedang</option><option value="Berat">Berat</option></select>
+            </div>
+          </div>
+          <div class="field"><label>Reaksi</label><input id="alReaksi" placeholder="misal: Gatal-gatal, sesak napas"></div>
+          <button class="btn btn-ghost btn-sm" onclick="addAllergy('${pat.id}')">+ Tambah Data Alergi Pasien</button>
+        </div>
+
+        <button class="btn btn-primary" style="width:100%;margin-top:16px;justify-content:center;" onclick="finishExam('${v.id}')">Selesai Periksa &amp; Kirim ke Kasir</button>
+      </div>
+    </div>
+  `;
+}
+function addProcedure(visitId){
+  const v = visitById(visitId);
+  const nama = document.getElementById('procNama').value.trim();
+  const biaya = parseInt(document.getElementById('procBiaya').value)||0;
+  if(!nama){ showToast('Nama tindakan wajib diisi'); return; }
+  v.procedures.push({nama, biaya});
+  renderMain();
+}
+function addRx(visitId){
+  const v = visitById(visitId);
+  const obat = document.getElementById('rxObat').value.trim();
+  if(!obat){ showToast('Nama obat wajib diisi'); return; }
+  v.prescription.push({
+    obat, dosis:document.getElementById('rxDosis').value, aturan:document.getElementById('rxAturan').value, jumlah:document.getElementById('rxJumlah').value,
+  });
+  renderMain();
+}
+function removeRx(visitId,i){
+  const v = visitById(visitId);
+  v.prescription.splice(i,1);
+  renderMain();
+}
+function addAllergy(patientId){
+  const pat = patientById(patientId);
+  const alergen = document.getElementById('alNama').value.trim();
+  const reaksi = document.getElementById('alReaksi').value.trim();
+  if(!alergen){ showToast('Nama alergen wajib diisi'); return; }
+  pat.alergi.push({alergen, jenis:'Obat', keparahan:document.getElementById('alTingkat').value, reaksi});
+  showToast('Data alergi tersimpan — akan terlihat di semua poli');
+  renderMain();
+}
+function finishExam(visitId){
+  const v = visitById(visitId);
+  const poli = poliById(v.poliId);
+  v.soap = {
+    s: document.getElementById('soapS').value,
+    o: document.getElementById('soapO').value,
+    a: document.getElementById('soapA').value,
+    p: document.getElementById('soapP').value,
+  };
+  if(poli.kode==='kandungan'){
+    v.poliDetail = {
+      jenis: document.getElementById('dJenis').value, gpa: document.getElementById('dGpa').value,
+      usia: document.getElementById('dUsia').value, usg: document.getElementById('dUsg').value,
+    };
+  } else if(poli.kode==='mata'){
+    v.poliDetail = {
+      visusOd: document.getElementById('dVisusOd').value, visusOs: document.getElementById('dVisusOs').value,
+      tioOd: document.getElementById('dTioOd').value, tioOs: document.getElementById('dTioOs').value,
+      fundus: document.getElementById('dFundus').value,
+    };
+  } else {
+    v.poliDetail = { statusGigi: document.getElementById('dGigiStatus').value };
+  }
+  v.status = 'selesai';
+  ui.activeVisitId = null;
+  showToast('Pemeriksaan selesai, terkirim ke kasir');
+  renderMain();
+}
+
+/* =========================================================
+   KASIR
+   ========================================================= */
+function renderKasir(){
+  if(ui.kasirView==='tunggu') return renderKasirTunggu();
+  return renderKasirLunas();
+}
+function renderKasirTunggu(){
+  const visits = state.visits.filter(v=>v.status==='selesai' && !v.payment);
+  const rows = visits.map(v=>{
+    const pat = patientById(v.patientId);
+    const poli = poliById(v.poliId);
+    const totalTindakan = v.procedures.reduce((a,p)=>a+p.biaya,0);
+    const konsultasi = 50000;
+    const total = totalTindakan + konsultasi;
+    return `<div class="list-row">
+      <div class="row-main">
+        <div class="row-name">${esc(pat.nama)} <span style="color:var(--ink-faint);font-weight:400;">· ${esc(pat.no_rm)}</span></div>
+        <div class="row-sub">${esc(poli.nama)} · Total ${fmtRp(total)}</div>
+      </div>
+      <span class="badge badge-unpaid">Belum Bayar</span>
+      <button class="btn btn-primary btn-sm" onclick="openPayment('${v.id}')">Proses Bayar</button>
+    </div>`;
+  }).join('') || `<div class="empty">Tidak ada pasien yang menunggu pembayaran.</div>`;
+
+  return `
+    <div class="page-head"><h1>Menunggu Bayar</h1><p>Pasien yang sudah selesai diperiksa dokter.</p></div>
+    <div class="grid grid-2">
+      <div class="card"><h3>Daftar Tagihan</h3><div class="list">${rows}</div></div>
+      <div class="card" id="paymentPanel"><div class="empty">Pilih pasien di sebelah kiri untuk memproses pembayaran.</div></div>
+    </div>
+  `;
+}
+function openPayment(visitId){
+  const v = visitById(visitId);
+  const pat = patientById(v.patientId);
+  const totalTindakan = v.procedures.reduce((a,p)=>a+p.biaya,0);
+  const konsultasi = 50000;
+  const total = totalTindakan + konsultasi;
+  document.getElementById('paymentPanel').innerHTML = `
+    <h3>Rincian Pembayaran — ${esc(pat.nama)}</h3>
+    <div class="rx-item"><span class="rx-name">Biaya konsultasi</span><span>${fmtRp(konsultasi)}</span></div>
+    ${v.procedures.map(p=>`<div class="rx-item"><span class="rx-name">${esc(p.nama)}</span><span>${fmtRp(p.biaya)}</span></div>`).join('')}
+    <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px;display:flex;justify-content:space-between;font-weight:700;">
+      <span>Total</span><span class="mono">${fmtRp(total)}</span>
+    </div>
+    <div class="field" style="margin-top:14px;"><label>Metode pembayaran</label>
+      <select id="payMethod"><option>Tunai</option><option>Debit</option><option>QRIS</option></select>
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="markPaid('${v.id}', ${total})">Tandai Lunas &amp; Cetak Kuitansi</button>
+  `;
+}
+function markPaid(visitId, total){
+  const v = visitById(visitId);
+  v.payment = { total, metode: document.getElementById('payMethod').value, waktu: new Date().toLocaleString('id-ID') };
+  showToast('Pembayaran lunas, kuitansi siap dicetak');
+  renderMain();
+}
+function renderKasirLunas(){
+  const paid = state.visits.filter(v=>v.payment);
+  const rows = paid.map(v=>{
+    const pat = patientById(v.patientId);
+    const poli = poliById(v.poliId);
+    return `<div class="list-row">
+      <div class="row-main">
+        <div class="row-name">${esc(pat.nama)}</div>
+        <div class="row-sub">${esc(poli.nama)} · ${esc(v.payment.metode)} · ${esc(v.payment.waktu)}</div>
+      </div>
+      <span class="mono" style="font-weight:700;">${fmtRp(v.payment.total)}</span>
+      <span class="badge badge-paid">Lunas</span>
+    </div>`;
+  }).join('') || `<div class="empty">Belum ada riwayat pembayaran.</div>`;
+  return `
+    <div class="page-head"><h1>Riwayat Pembayaran</h1><p>Transaksi yang sudah lunas hari ini.</p></div>
+    <div class="card"><div class="list">${rows}</div></div>
+  `;
+}
+
+/* =========================================================
+   ADMIN
+   ========================================================= */
+const STAFF_MOCK = [
+  {nama:'Yeni Kurnia', role:'Petugas Pendaftaran', poli:'-'},
+  {nama:'dr. Sarah Amelia, Sp.OG', role:'Dokter', poli:'Kebidanan & Kandungan'},
+  {nama:'dr. Bagus Wirawan, Sp.M', role:'Dokter', poli:'Mata'},
+  {nama:'drg. Novita Putri', role:'Dokter', poli:'Gigi'},
+  {nama:'Rian Saputra', role:'Kasir', poli:'-'},
+];
+function renderAdmin(){
+  if(ui.adminView==='staff') return renderAdminStaff();
+  return renderAdminLaporan();
+}
+function renderAdminStaff(){
+  const rows = STAFF_MOCK.map(s=>`
+    <div class="list-row">
+      <div class="row-main"><div class="row-name">${esc(s.nama)}</div><div class="row-sub">${esc(s.role)}${s.poli!=='-'?' · '+esc(s.poli):''}</div></div>
+      <button class="btn btn-ghost btn-sm">Edit</button>
+    </div>`).join('');
+  return `
+    <div class="page-head"><h1>Kelola Staff</h1><p>Daftar petugas, dokter, dan kasir yang punya akses ke sistem.</p></div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;">Staff Aktif</h3><button class="btn btn-amber btn-sm">+ Tambah Staff</button>
+      </div>
+      <div class="list">${rows}</div>
+    </div>
+  `;
+}
+function renderAdminLaporan(){
+  const totalKunjungan = state.visits.length;
+  const totalLunas = state.visits.filter(v=>v.payment).length;
+  const pendapatan = state.visits.filter(v=>v.payment).reduce((a,v)=>a+v.payment.total,0);
+  const totalAlergi = state.patients.reduce((a,p)=>a+p.alergi.length,0);
+  const perPoli = POLI.map(p=>{
+    const n = state.visits.filter(v=>v.poliId===p.id).length;
+    return `<div class="list-row"><div class="row-main"><div class="row-name">${esc(p.nama)}</div></div><span class="mono" style="font-weight:700;">${n} kunjungan</span></div>`;
+  }).join('');
+  return `
+    <div class="page-head"><h1>Laporan</h1><p>Ringkasan operasional klinik hari ini.</p></div>
+    <div class="grid grid-3" style="margin-bottom:16px;">
+      <div class="stat-card"><div class="num">${totalKunjungan}</div><div class="label">Total Kunjungan</div></div>
+      <div class="stat-card"><div class="num">${fmtRp(pendapatan)}</div><div class="label">Pendapatan (${totalLunas} lunas)</div></div>
+      <div class="stat-card"><div class="num">${totalAlergi}</div><div class="label">Data Alergi Tercatat</div></div>
+    </div>
+    <div class="card"><h3>Kunjungan per Poliklinik</h3><div class="list">${perPoli}</div></div>
+  `;
+}
+
+/* =========================================================
+   INIT
+   ========================================================= */
+renderRoleSwitch();
+renderSidebar();
+renderMain();
+</script>
+</body>
+</html>
