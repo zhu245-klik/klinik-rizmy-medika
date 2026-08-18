@@ -854,8 +854,8 @@ async function renderPemeriksaan(visitId){
           <h3>Resep Obat</h3>
           <p style="font-size:12px;color:var(--ink-faint);margin-bottom:8px;">Dicatat untuk rekam medis &amp; dicetak — pasien tebus di apotek luar.</p>
           <div class="field"><label>Nama obat</label>
-            <input id="rxObat" list="obatDatalist" placeholder="Ketik atau pilih nama obat...">
-            <datalist id="obatDatalist">${cache.obatList.map(o=>`<option value="${esc(o.nama_obat)}">`).join('')}</datalist>
+            <input id="rxObat" list="obatDatalist" placeholder="Ketik atau pilih nama obat..." oninput="fillDosisFromObat(this.value)">
+            <datalist id="obatDatalist">${cache.obatList.map(o=>`<option value="${esc(obatLabel(o))}">`).join('')}</datalist>
           </div>
           <div class="field-row">
             <div class="field"><label>Dosis</label><input id="rxDosis" placeholder="500mg"></div>
@@ -885,6 +885,15 @@ async function renderPemeriksaan(visitId){
 function renderProcList(){
   return cache.currentProcedures.map(p=>`<div class="rx-item"><span class="rx-name">${esc(p.nama_tindakan)}</span><span>${fmtRp(p.biaya)}</span></div>`).join('')
     || '<p style="font-size:12.5px;color:var(--ink-faint);">Belum ada tindakan.</p>';
+}
+function obatLabel(o){
+  return o.dosis ? `${o.nama_obat} ${o.dosis}` : o.nama_obat;
+}
+function fillDosisFromObat(typedValue){
+  const dosisField = document.getElementById('rxDosis');
+  if(!dosisField) return;
+  const match = cache.obatList.find(o=>obatLabel(o).toLowerCase() === typedValue.trim().toLowerCase());
+  if(match && match.dosis) dosisField.value = match.dosis;
 }
 function renderRxList(){
   return cache.currentRxItems.map(r=>`<div class="rx-item"><span class="rx-name">${esc(r.nama_obat)}</span><span>${esc(r.dosis||'')}</span><span>${esc(r.aturan_pakai||'')}</span><span>${esc(r.jumlah||'')}</span></div>`).join('')
@@ -1169,18 +1178,19 @@ async function renderAdminObat(){
       <div>
         <div class="card">
           <h3>Tambah Obat Manual</h3>
-          <div class="field"><label>Nama obat</label><input id="obatNamaBaru" placeholder="misal: Paracetamol"></div>
+          <div class="field"><label>Nama obat</label><input id="obatNamaBaru" placeholder="misal: Amoxicillin"></div>
           <div class="field-row">
+            <div class="field"><label>Dosis</label><input id="obatDosisBaru" placeholder="misal: 500mg"></div>
             <div class="field"><label>Satuan</label><input id="obatSatuanBaru" placeholder="tablet / botol / kapsul"></div>
-            <div class="field"><label>Kategori (opsional)</label><input id="obatKategoriBaru" placeholder="misal: analgesik"></div>
           </div>
+          <div class="field"><label>Kategori (opsional)</label><input id="obatKategoriBaru" placeholder="misal: antibiotik"></div>
           <button class="btn btn-primary btn-block" onclick="addObatManual()">Simpan Obat</button>
         </div>
         <div class="card" style="margin-top:16px;">
           <h3>Upload Massal via CSV</h3>
           <p style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">
-            Format file CSV: baris pertama header <code>nama_obat,satuan,kategori</code> (kolom kategori opsional). Contoh:<br>
-            <span class="mono" style="font-size:11.5px;">nama_obat,satuan,kategori<br>Amoxicillin,kapsul,antibiotik<br>Paracetamol,tablet,analgesik</span>
+            Format file CSV: baris pertama header <code>nama_obat,dosis,satuan,kategori</code> (dosis, satuan, kategori opsional). Contoh:<br>
+            <span class="mono" style="font-size:11.5px;">nama_obat,dosis,satuan,kategori<br>Amoxicillin,500mg,kapsul,antibiotik<br>Paracetamol,500mg,tablet,analgesik</span>
           </p>
           <input type="file" id="csvFile" accept=".csv" style="margin-bottom:10px;">
           <button class="btn btn-amber btn-block" onclick="uploadObatCsv()">Upload CSV</button>
@@ -1193,7 +1203,7 @@ async function renderAdminObat(){
 function renderObatRows(list){
   return list.map(o=>`
     <div class="list-row">
-      <div class="row-main"><div class="row-name">${esc(o.nama_obat)}</div>
+      <div class="row-main"><div class="row-name">${esc(o.nama_obat)}${o.dosis? ' <span style="color:var(--ink-faint);font-weight:400;">· '+esc(o.dosis)+'</span>':''}</div>
         <div class="row-sub">${esc(o.satuan||'-')}${o.kategori? ' · '+esc(o.kategori) : ''}</div></div>
       <span class="badge ${o.aktif?'badge-paid':'badge-unpaid'}">${o.aktif?'Aktif':'Nonaktif'}</span>
       <button class="btn btn-ghost btn-sm" onclick="toggleObatAktif('${o.id}', ${!o.aktif})">${o.aktif?'Nonaktifkan':'Aktifkan'}</button>
@@ -1201,7 +1211,7 @@ function renderObatRows(list){
 }
 function filterObat(q){
   q = q.toLowerCase();
-  const filtered = cache.obatAdmin.filter(o=>o.nama_obat.toLowerCase().includes(q));
+  const filtered = cache.obatAdmin.filter(o=>o.nama_obat.toLowerCase().includes(q) || (o.dosis||'').toLowerCase().includes(q));
   document.getElementById('obatList').innerHTML = renderObatRows(filtered);
 }
 async function addObatManual(){
@@ -1209,15 +1219,17 @@ async function addObatManual(){
   if(!nama){ showToast('Nama obat wajib diisi'); return; }
   const payload = {
     nama_obat: nama,
+    dosis: document.getElementById('obatDosisBaru').value.trim() || null,
     satuan: document.getElementById('obatSatuanBaru').value.trim() || null,
     kategori: document.getElementById('obatKategoriBaru').value.trim() || null,
   };
   const { data, error } = await sb.from('obat').insert(payload).select().single();
-  if(error){ showToast('Gagal simpan obat: '+(error.message.includes('duplicate')?'Nama obat sudah ada':error.message)); return; }
+  if(error){ showToast('Gagal simpan obat: '+(error.message.includes('duplicate')?'Obat dengan nama & dosis ini sudah ada':error.message)); return; }
   cache.obatAdmin.unshift(data);
   document.getElementById('obatList').innerHTML = renderObatRows(cache.obatAdmin);
-  document.getElementById('obatNamaBaru').value=''; document.getElementById('obatSatuanBaru').value=''; document.getElementById('obatKategoriBaru').value='';
-  showToast('Obat "'+nama+'" tersimpan');
+  document.getElementById('obatNamaBaru').value=''; document.getElementById('obatDosisBaru').value='';
+  document.getElementById('obatSatuanBaru').value=''; document.getElementById('obatKategoriBaru').value='';
+  showToast('Obat "'+nama+(payload.dosis?' '+payload.dosis:'')+'" tersimpan');
 }
 async function toggleObatAktif(id, newVal){
   const { error } = await sb.from('obat').update({ aktif: newVal }).eq('id', id);
@@ -1229,6 +1241,7 @@ function parseCsv(text){
   if(!lines.length) return [];
   const header = lines[0].split(',').map(h=>h.trim().toLowerCase());
   const idxNama = header.indexOf('nama_obat');
+  const idxDosis = header.indexOf('dosis');
   const idxSatuan = header.indexOf('satuan');
   const idxKategori = header.indexOf('kategori');
   if(idxNama===-1) throw new Error('Kolom "nama_obat" wajib ada di header CSV');
@@ -1239,6 +1252,7 @@ function parseCsv(text){
     if(!nama) continue;
     rows.push({
       nama_obat: nama,
+      dosis: idxDosis!==-1 ? (cols[idxDosis]||null) : null,
       satuan: idxSatuan!==-1 ? (cols[idxSatuan]||null) : null,
       kategori: idxKategori!==-1 ? (cols[idxKategori]||null) : null,
     });
@@ -1256,13 +1270,14 @@ async function uploadObatCsv(){
   catch(e){ statusEl.textContent = 'Gagal membaca CSV: '+e.message; return; }
   if(!rows.length){ statusEl.textContent = 'Tidak ada baris data yang valid di file CSV.'; return; }
 
-  const existingNames = new Set(cache.obatAdmin.map(o=>o.nama_obat.toLowerCase()));
+  const dedupKey = (nama, dosis) => nama.toLowerCase()+'|'+(dosis||'').toLowerCase();
+  const existingKeys = new Set(cache.obatAdmin.map(o=>dedupKey(o.nama_obat, o.dosis)));
   const seen = new Set();
   const toInsert = [];
   let skipped = 0;
   for(const r of rows){
-    const key = r.nama_obat.toLowerCase();
-    if(existingNames.has(key) || seen.has(key)){ skipped++; continue; }
+    const key = dedupKey(r.nama_obat, r.dosis);
+    if(existingKeys.has(key) || seen.has(key)){ skipped++; continue; }
     seen.add(key);
     toInsert.push(r);
   }
