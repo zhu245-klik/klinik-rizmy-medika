@@ -344,6 +344,24 @@ const POLI = [
 ];
 function poliById(id){ return POLI.find(p=>p.id===id); }
 
+/* Info klinik untuk kop resep & kuitansi cetak.
+   GANTI nilai-nilai ini sesuai data asli klinikmu. */
+const CLINIC_INFO = {
+  nama: 'RIZMY MEDIKA',
+  alamat: 'Jl. Contoh No. 123, Loa Janan, Kutai Kartanegara',   // TODO: ganti alamat asli
+  telp: '(0541) 000-000',                                        // TODO: ganti nomor telepon asli
+  kota: 'Samarinda',                                             // TODO: ganti kota domisili klinik
+};
+function computeAge(tglLahir){
+  if(!tglLahir) return '-';
+  const dob = new Date(tglLahir);
+  if(isNaN(dob.getTime())) return '-';
+  let years = new Date().getFullYear() - dob.getFullYear();
+  const m = new Date().getMonth() - dob.getMonth();
+  if(m < 0 || (m===0 && new Date().getDate() < dob.getDate())) years--;
+  return years + ' tahun';
+}
+
 let currentStaff = null;   // baris dari tabel staff untuk user yang login
 let ui = {
   role: null,
@@ -470,7 +488,7 @@ function setSuperRole(role){
    SIDEBAR / NAV
    ========================================================= */
 const NAVS = {
-  petugas: [ {id:'antrian', label:'Antrian Hari Ini'}, {id:'daftar', label:'Cari / Daftar Pasien'} ],
+  petugas: [ {id:'antrian', label:'Antrian Hari Ini'}, {id:'daftar', label:'Cari / Daftar Pasien'}, {id:'resep', label:'Cetak Resep'} ],
   dokter:  [ {id:'antrian', label:'Antrian Poli Saya'} ],
   kasir:   [ {id:'tunggu', label:'Menunggu Bayar'}, {id:'lunas', label:'Riwayat Pembayaran'} ],
   admin:   [ {id:'staff', label:'Kelola Staff'}, {id:'obat', label:'Data Obat'}, {id:'laporan', label:'Dashboard'} ],
@@ -512,7 +530,35 @@ async function renderMain(){
    ========================================================= */
 async function renderPetugas(){
   if(ui.petugasView==='antrian') return await renderPetugasAntrian();
+  if(ui.petugasView==='resep') return await renderPetugasResep();
   return await renderPetugasDaftar();
+}
+
+async function renderPetugasResep(){
+  const { data: visits, error } = await sb.from('visits')
+    .select('*, patients(nama, no_rm), prescriptions(id, prescription_items(*))')
+    .eq('tanggal', todayStr()).eq('status', 'selesai')
+    .order('no_antrian');
+  if(error) throw error;
+
+  const rows = (visits||[]).map(v=>{
+    const poli = poliById(v.poli_id);
+    const presc = v.prescriptions && v.prescriptions[0];
+    const jumlahItem = presc && presc.prescription_items ? presc.prescription_items.length : 0;
+    return `<div class="list-row">
+      <div class="queue-num mono">${v.no_antrian}</div>
+      <div class="row-main">
+        <div class="row-name">${esc(v.patients.nama)} <span style="color:var(--ink-faint);font-weight:400;">· ${esc(v.patients.no_rm)}</span></div>
+        <div class="row-sub">${esc(poli.nama)} · ${jumlahItem? jumlahItem+' item resep' : 'Tidak ada resep'}</div>
+      </div>
+      <button class="btn btn-primary btn-sm" ${jumlahItem? '' : 'disabled'} onclick="printResep('${v.id}')">🖨️ Cetak Resep</button>
+    </div>`;
+  }).join('') || `<div class="empty">Belum ada pasien yang selesai diperiksa hari ini.</div>`;
+
+  return `
+    <div class="page-head"><h1>Cetak Resep</h1><p>Cetak resep dokter untuk diserahkan pasien ke apotek, sebelum atau saat pasien menuju kasir.</p></div>
+    <div class="card"><h3>Pasien Selesai Diperiksa Hari Ini</h3><div class="list">${rows}</div></div>
+  `;
 }
 
 async function renderPetugasAntrian(){
@@ -981,6 +1027,86 @@ async function finishExam(visitId){
 /* =========================================================
    KASIR
    ========================================================= */
+/* =========================================================
+   CETAK RESEP OBAT (kaidah standar: kop klinik, identitas
+   dokter+SIP, tanggal, notasi R/, identitas pasien)
+   ========================================================= */
+function resepHTML(data){
+  const itemsHtml = data.items.map(it=>`
+    <div style="margin:16px 0;">
+      <div style="display:flex; gap:8px; align-items:baseline;">
+        <span style="font-weight:bold; font-size:15px;">R/</span>
+        <div style="flex:1;">
+          <div style="display:flex; justify-content:space-between; font-style:italic; font-size:13.5px;">
+            <span>${esc(it.obat)}${it.dosis? ' '+esc(it.dosis):''}</span>
+            <span>${it.jumlah? esc(it.jumlah):''}</span>
+          </div>
+          ${it.aturan? `<div style="font-style:italic; font-size:12.5px; margin-top:2px;">S. ${esc(it.aturan)}</div>` : ''}
+        </div>
+      </div>
+    </div>`).join('');
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Resep — ${esc(data.namaPasien)}</title>
+  <style>
+    body{font-family:Georgia,'Times New Roman',serif; margin:0; padding:20px; display:flex; justify-content:center; background:#fff; color:#111;}
+    .sheet{width:340px; border:2px solid #111; padding:18px 22px;}
+    .header{text-align:center; padding-bottom:12px; border-bottom:3px double #111; margin-bottom:14px;}
+    .logo{font-size:22px; line-height:1;}
+    .clinic-name{font-weight:bold; font-size:16px; text-decoration:underline; letter-spacing:.02em; margin-top:2px;}
+    .clinic-sub{font-size:11.5px; margin-top:4px; line-height:1.5;}
+    .doctor-name{font-weight:bold; font-style:italic; font-size:13.5px; margin-top:10px;}
+    .doctor-sip{font-size:11px; font-style:italic;}
+    .date-line{text-align:right; font-size:12px; font-style:italic; margin-bottom:14px;}
+    .items{min-height:150px;}
+    .footer{border-top:1px solid #111; margin-top:20px; padding-top:10px; font-size:12px;}
+    .footer div{margin-bottom:4px; display:flex;}
+    .footer b{display:inline-block; width:64px; flex-shrink:0;}
+    @media print{ body{padding:0;} .sheet{border:none; margin:0 auto;} }
+  </style></head><body>
+    <div class="sheet">
+      <div class="header">
+        <div class="logo">✚</div>
+        <div class="clinic-name">${esc(CLINIC_INFO.nama)}</div>
+        <div class="clinic-sub">${esc(CLINIC_INFO.alamat)}<br>Telp. ${esc(CLINIC_INFO.telp)}</div>
+        <div class="doctor-name">${esc(data.namaDokter)}</div>
+        <div class="doctor-sip">SIP. No. ${esc(data.sipDokter)}</div>
+      </div>
+      <div class="date-line">${esc(CLINIC_INFO.kota)}, ${esc(data.tanggal)}</div>
+      <div class="items">${itemsHtml}</div>
+      <div class="footer">
+        <div><b>Pro</b><span>: ${esc(data.namaPasien)}</span></div>
+        <div><b>Umur</b><span>: ${esc(data.umur)}</span></div>
+        <div><b>Alamat</b><span>: ${esc(data.alamat)}</span></div>
+      </div>
+    </div>
+  </body></html>`;
+}
+function openResepWindow(data){
+  const w = window.open('', '_blank', 'width=420,height=680');
+  if(!w){ showToast('Popup diblokir browser — izinkan popup untuk cetak resep'); return; }
+  w.document.write(resepHTML(data));
+  w.document.close();
+  setTimeout(()=>{ w.focus(); w.print(); }, 300);
+}
+async function printResep(visitId){
+  const { data: v, error } = await sb.from('visits')
+    .select('*, patients(*), dokter:dokter_id(nama, no_str), prescriptions(*, prescription_items(*))')
+    .eq('id', visitId).single();
+  if(error){ showToast('Gagal ambil data resep: '+error.message); return; }
+  const presc = v.prescriptions && v.prescriptions[0];
+  if(!presc || !presc.prescription_items || !presc.prescription_items.length){
+    showToast('Belum ada resep untuk pasien ini'); return;
+  }
+  const pat = v.patients;
+  openResepWindow({
+    namaDokter: v.dokter ? v.dokter.nama : '-',
+    sipDokter: v.dokter && v.dokter.no_str ? v.dokter.no_str : '-',
+    tanggal: new Date(v.created_at).toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'}),
+    items: presc.prescription_items.map(it=>({ obat: it.nama_obat, dosis: it.dosis, aturan: it.aturan_pakai, jumlah: it.jumlah })),
+    namaPasien: pat.nama, umur: computeAge(pat.tgl_lahir), alamat: pat.alamat || '-',
+  });
+}
+
 function receiptHTML(data){
   const itemsHtml = data.items.map(it=>`<div class="row"><span>${esc(it.label)}</span><span>${fmtRp(it.amount)}</span></div>`).join('');
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Kuitansi ${esc(data.noKuitansi)}</title>
@@ -1085,7 +1211,8 @@ function openPayment(visitId){
     <div class="field" style="margin-top:14px;"><label>Metode pembayaran</label>
       <select id="payMethod"><option>Tunai</option><option>Debit</option><option>QRIS</option></select>
     </div>
-    <button class="btn btn-primary btn-block" onclick="markPaid('${v.id}', ${konsultasi}, ${totalTindakan})">Tandai Lunas &amp; Cetak Kuitansi</button>
+    <button class="btn btn-primary btn-block" onclick="markPaid('${v.id}', ${konsultasi}, ${totalTindakan})">Tandai Lunas</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="printResep('${v.id}')">🖨️ Cetak Resep</button>
   `;
 }
 async function markPaid(visitId, konsultasi, tindakan){
@@ -1112,6 +1239,7 @@ async function markPaid(visitId, konsultasi, tindakan){
     <h3>Pembayaran Berhasil</h3>
     <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">${esc(v.patients.nama)} · ${esc(poli.nama)} · Total ${fmtRp(payment.total)}</p>
     <button class="btn btn-primary btn-block" onclick="printKuitansi()">🖨️ Cetak Kuitansi</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="printResep('${v.id}')">🖨️ Cetak Resep</button>
     <button class="btn btn-ghost btn-block" style="margin-top:8px;" onclick="renderMain()">Kembali ke Daftar Tagihan</button>
   `;
 }
