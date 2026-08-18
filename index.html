@@ -95,6 +95,13 @@
   .brand-sub{font-size:11px;color:#B9CBC7;margin-top:-2px;}
 
   .user-chip{display:flex;align-items:center;gap:10px;}
+  .super-switch{display:flex;gap:4px;background:rgba(255,255,255,0.08);padding:4px;border-radius:10px;}
+  .super-switch button{
+    border:none;background:transparent;color:#C7D6D3;padding:7px 13px;border-radius:7px;
+    font-size:12.5px;font-weight:600;cursor:pointer;transition:background .15s, color .15s;
+  }
+  .super-switch button.active{background:var(--amber);color:var(--teal-dark);}
+  .super-switch button:hover:not(.active){background:rgba(255,255,255,0.12);}
   .user-chip .info{text-align:right;}
   .user-chip .name{font-size:13px;font-weight:600;color:#fff;}
   .user-chip .role{font-size:11px;color:#B9CBC7;text-transform:capitalize;}
@@ -252,6 +259,13 @@
   }
   .toast.show{opacity:1;transform:none;}
 
+  .poli-tabs{display:flex;gap:6px;margin-bottom:16px;}
+  .poli-tab{
+    border:1px solid var(--border);background:var(--surface);border-radius:8px;
+    padding:7px 14px;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;
+  }
+  .poli-tab.active{background:var(--teal);color:#fff;border-color:var(--teal);}
+
   @media (max-width:860px){
     .layout{flex-direction:column;}
     .sidebar{width:100%;display:flex;overflow-x:auto;gap:4px;padding:10px 12px;border-right:none;border-bottom:1px solid var(--border);}
@@ -292,6 +306,7 @@
         <div class="brand-sub">Beyond Medical Care</div>
       </div>
     </div>
+    <div class="super-switch" id="superSwitch" style="display:none;"></div>
     <div class="user-chip">
       <div class="info">
         <div class="name" id="userName">—</div>
@@ -413,6 +428,34 @@ function enterApp(){
   document.getElementById('userName').textContent = currentStaff.nama;
   const poliLabel = currentStaff.poli_id ? ' · ' + poliById(currentStaff.poli_id).nama : '';
   document.getElementById('userRole').textContent = currentStaff.role + poliLabel;
+
+  if(currentStaff.role === 'superadmin'){
+    ui.superRole = ui.superRole || 'admin';
+    ui.superDokterPoli = ui.superDokterPoli || POLI[0].id;
+    renderSuperSwitch();
+  }
+  renderSidebar();
+  renderMain();
+}
+
+/* Kalau superadmin, dia bisa "bertindak sebagai" role apa saja.
+   Untuk role lain (petugas/dokter/kasir/admin), role-nya tetap. */
+function effectiveRole(){
+  return currentStaff.role === 'superadmin' ? ui.superRole : currentStaff.role;
+}
+const SUPER_ROLES = [
+  {id:'petugas', label:'Petugas'}, {id:'dokter', label:'Dokter'},
+  {id:'kasir', label:'Kasir'}, {id:'admin', label:'Admin'},
+];
+function renderSuperSwitch(){
+  const el = document.getElementById('superSwitch');
+  el.style.display = 'flex';
+  el.innerHTML = SUPER_ROLES.map(r=>`<button class="${ui.superRole===r.id?'active':''}" onclick="setSuperRole('${r.id}')">${r.label}</button>`).join('');
+}
+function setSuperRole(role){
+  ui.superRole = role;
+  ui.activeVisitId = null;
+  renderSuperSwitch();
   renderSidebar();
   renderMain();
 }
@@ -434,15 +477,16 @@ const NAVS = {
 };
 function renderSidebar(){
   const el = document.getElementById('sidebarNav');
-  const items = NAVS[currentStaff.role];
-  const activeKey = currentStaff.role + 'View';
+  const role = effectiveRole();
+  const items = NAVS[role];
+  const activeKey = role + 'View';
   el.innerHTML = items.map(it=>{
     const active = ui[activeKey]===it.id;
     return `<button class="nav-item ${active?'active':''}" onclick="setSubView('${it.id}')"><span class="nav-dot"></span>${it.label}</button>`;
   }).join('');
 }
 function setSubView(id){
-  ui[currentStaff.role+'View'] = id;
+  ui[effectiveRole()+'View'] = id;
   ui.activeVisitId = null;
   renderSidebar();
   renderMain();
@@ -452,10 +496,11 @@ async function renderMain(){
   const el = document.getElementById('mainArea');
   el.innerHTML = '<div class="loading">Memuat data...</div>';
   try{
-    if(currentStaff.role==='petugas') el.innerHTML = await renderPetugas();
-    if(currentStaff.role==='dokter') el.innerHTML = await renderDokter();
-    if(currentStaff.role==='kasir') el.innerHTML = await renderKasir();
-    if(currentStaff.role==='admin') el.innerHTML = await renderAdmin();
+    const role = effectiveRole();
+    if(role==='petugas') el.innerHTML = await renderPetugas();
+    if(role==='dokter') el.innerHTML = await renderDokter();
+    if(role==='kasir') el.innerHTML = await renderKasir();
+    if(role==='admin') el.innerHTML = await renderAdmin();
   }catch(e){
     console.error(e);
     el.innerHTML = '<div class="empty">Gagal memuat data: '+esc(e.message||e)+'</div>';
@@ -648,10 +693,13 @@ async function createVisit(){
 async function renderDokter(){
   if(ui.activeVisitId) return await renderPemeriksaan(ui.activeVisitId);
 
-  const poli = poliById(currentStaff.poli_id);
+  const isSuper = currentStaff.role === 'superadmin';
+  const poliId = isSuper ? ui.superDokterPoli : currentStaff.poli_id;
+  const poli = poliById(poliId);
+
   const { data: visits, error } = await sb.from('visits')
     .select('*, patients(nama, patient_allergies(*))')
-    .eq('poli_id', currentStaff.poli_id).eq('tanggal', todayStr())
+    .eq('poli_id', poliId).eq('tanggal', todayStr())
     .neq('status','selesai').order('no_antrian');
   if(error) throw error;
   cache.visits = visits || [];
@@ -669,10 +717,18 @@ async function renderDokter(){
     </div>`;
   }).join('') || `<div class="empty">Tidak ada pasien menunggu di poli ini.</div>`;
 
+  const poliTabs = isSuper ? `<div class="poli-tabs">${POLI.map(p=>
+    `<button class="poli-tab ${p.id===poliId?'active':''}" onclick="setSuperDokterPoli(${p.id})">${esc(p.nama)}</button>`).join('')}</div>` : '';
+
   return `
-    <div class="page-head"><h1>Antrian Poli — ${esc(poli.nama)}</h1><p>${esc(currentStaff.nama)}</p></div>
+    <div class="page-head"><h1>Antrian Poli — ${esc(poli.nama)}</h1><p>${esc(currentStaff.nama)}${isSuper?' (bertindak sebagai dokter)':''}</p></div>
+    ${poliTabs}
     <div class="card"><h3>Daftar Tunggu</h3><div class="list">${rows}</div></div>
   `;
+}
+function setSuperDokterPoli(id){
+  ui.superDokterPoli = id;
+  renderMain();
 }
 async function callVisit(id){
   await sb.from('visits').update({ status:'dipanggil' }).eq('id', id);
