@@ -433,11 +433,15 @@ async function loadCurrentStaff(){
 async function doLogout(){
   await sb.auth.signOut();
   currentStaff = null;
-  ui.activeVisitId = null;
+  ui = { role:null, petugasView:'antrian', dokterView:'antrian', kasirView:'tunggu', adminView:'staff', activeVisitId:null };
+  cache = { patients: [], visits: [], dokters: [] };
   document.getElementById('app').classList.remove('show');
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('loginEmail').value = '';
   document.getElementById('loginPassword').value = '';
+  const sw = document.getElementById('superSwitch');
+  sw.style.display = 'none';
+  sw.innerHTML = '';
 }
 
 function enterApp(){
@@ -447,9 +451,13 @@ function enterApp(){
   const poliLabel = currentStaff.poli_id ? ' · ' + poliById(currentStaff.poli_id).nama : '';
   document.getElementById('userRole').textContent = currentStaff.role + poliLabel;
 
+  const sw = document.getElementById('superSwitch');
   if(currentStaff.role === 'superadmin'){
     ui.superRole = ui.superRole || 'admin';
     renderSuperSwitch();
+  } else {
+    sw.style.display = 'none';
+    sw.innerHTML = '';
   }
   renderSidebar();
   renderMain();
@@ -487,9 +495,9 @@ function setSuperRole(role){
    SIDEBAR / NAV
    ========================================================= */
 const NAVS = {
-  petugas: [ {id:'antrian', label:'Antrian Hari Ini'}, {id:'daftar', label:'Cari / Daftar Pasien'}, {id:'resep', label:'Cetak Resep'} ],
+  petugas: [ {id:'antrian', label:'Antrian Hari Ini'}, {id:'daftar', label:'Cari / Daftar Pasien'} ],
   dokter:  [ {id:'antrian', label:'Antrian Poli Saya'} ],
-  kasir:   [ {id:'tunggu', label:'Menunggu Bayar'}, {id:'lunas', label:'Riwayat Pembayaran'} ],
+  kasir:   [ {id:'tunggu', label:'Menunggu Bayar'}, {id:'resep', label:'Cetak Resep'}, {id:'lunas', label:'Riwayat Pembayaran'} ],
   admin:   [ {id:'staff', label:'Kelola Staff'}, {id:'pasien', label:'Data Pasien'}, {id:'rekam', label:'Rekam Medis'}, {id:'obat', label:'Data Obat'}, {id:'laporan', label:'Dashboard'} ],
 };
 function renderSidebar(){
@@ -532,35 +540,7 @@ async function renderMain(){
    ========================================================= */
 async function renderPetugas(){
   if(ui.petugasView==='antrian') return await renderPetugasAntrian();
-  if(ui.petugasView==='resep') return await renderPetugasResep();
   return await renderPetugasDaftar();
-}
-
-async function renderPetugasResep(){
-  const { data: visits, error } = await sb.from('visits')
-    .select('*, patients(nama, no_rm), prescriptions(id, prescription_items(*))')
-    .eq('tanggal', todayStr()).eq('status', 'selesai')
-    .order('no_antrian');
-  if(error) throw error;
-
-  const rows = (visits||[]).map(v=>{
-    const poli = poliById(v.poli_id);
-    const presc = v.prescriptions && v.prescriptions[0];
-    const jumlahItem = presc && presc.prescription_items ? presc.prescription_items.length : 0;
-    return `<div class="list-row">
-      <div class="queue-num mono">${v.no_antrian}</div>
-      <div class="row-main">
-        <div class="row-name">${esc(v.patients.nama)} <span style="color:var(--ink-faint);font-weight:400;">· ${esc(v.patients.no_rm)}</span></div>
-        <div class="row-sub">${esc(poli.nama)} · ${jumlahItem? jumlahItem+' item resep' : 'Tidak ada resep'}</div>
-      </div>
-      <button class="btn btn-primary btn-sm" ${jumlahItem? '' : 'disabled'} onclick="printResep('${v.id}')">🖨️ Cetak Resep</button>
-    </div>`;
-  }).join('') || `<div class="empty">Belum ada pasien yang selesai diperiksa hari ini.</div>`;
-
-  return `
-    <div class="page-head"><h1>Cetak Resep</h1><p>Cetak resep dokter untuk diserahkan pasien ke apotek, sebelum atau saat pasien menuju kasir.</p></div>
-    <div class="card"><h3>Pasien Selesai Diperiksa Hari Ini</h3><div class="list">${rows}</div></div>
-  `;
 }
 
 async function renderPetugasAntrian(){
@@ -1188,7 +1168,35 @@ function printKuitansiHistory(paymentId){
 }
 async function renderKasir(){
   if(ui.kasirView==='tunggu') return await renderKasirTunggu();
+  if(ui.kasirView==='resep') return await renderKasirResep();
   return await renderKasirLunas();
+}
+
+async function renderKasirResep(){
+  const { data: visits, error } = await sb.from('visits')
+    .select('*, patients(nama, no_rm), prescriptions(id, prescription_items(*))')
+    .eq('tanggal', todayStr()).eq('status', 'selesai')
+    .order('no_antrian');
+  if(error) throw error;
+
+  const rows = (visits||[]).map(v=>{
+    const poli = poliById(v.poli_id);
+    const presc = v.prescriptions && v.prescriptions[0];
+    const jumlahItem = presc && presc.prescription_items ? presc.prescription_items.length : 0;
+    return `<div class="list-row">
+      <div class="queue-num mono">${v.no_antrian}</div>
+      <div class="row-main">
+        <div class="row-name">${esc(v.patients.nama)} <span style="color:var(--ink-faint);font-weight:400;">· ${esc(v.patients.no_rm)}</span></div>
+        <div class="row-sub">${esc(poli.nama)} · ${jumlahItem? jumlahItem+' item resep' : 'Tidak ada resep'}</div>
+      </div>
+      <button class="btn btn-primary btn-sm" ${jumlahItem? '' : 'disabled'} onclick="printResep('${v.id}')">🖨️ Cetak Resep</button>
+    </div>`;
+  }).join('') || `<div class="empty">Belum ada pasien yang selesai diperiksa hari ini.</div>`;
+
+  return `
+    <div class="page-head"><h1>Cetak Resep</h1><p>Cetak resep dokter untuk diserahkan pasien ke apotek — bisa langsung diberikan bersamaan saat pasien membayar.</p></div>
+    <div class="card"><h3>Pasien Selesai Diperiksa Hari Ini</h3><div class="list">${rows}</div></div>
+  `;
 }
 async function renderKasirTunggu(){
   const { data: visits, error } = await sb.from('visits')
