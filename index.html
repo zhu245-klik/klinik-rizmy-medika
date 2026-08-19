@@ -449,7 +449,6 @@ function enterApp(){
 
   if(currentStaff.role === 'superadmin'){
     ui.superRole = ui.superRole || 'admin';
-    ui.superDokterPoli = ui.superDokterPoli || POLI[0].id;
     renderSuperSwitch();
   }
   renderSidebar();
@@ -491,12 +490,15 @@ const NAVS = {
   petugas: [ {id:'antrian', label:'Antrian Hari Ini'}, {id:'daftar', label:'Cari / Daftar Pasien'}, {id:'resep', label:'Cetak Resep'} ],
   dokter:  [ {id:'antrian', label:'Antrian Poli Saya'} ],
   kasir:   [ {id:'tunggu', label:'Menunggu Bayar'}, {id:'lunas', label:'Riwayat Pembayaran'} ],
-  admin:   [ {id:'staff', label:'Kelola Staff'}, {id:'obat', label:'Data Obat'}, {id:'laporan', label:'Dashboard'} ],
+  admin:   [ {id:'staff', label:'Kelola Staff'}, {id:'pasien', label:'Data Pasien'}, {id:'rekam', label:'Rekam Medis'}, {id:'obat', label:'Data Obat'}, {id:'laporan', label:'Dashboard'} ],
 };
 function renderSidebar(){
   const el = document.getElementById('sidebarNav');
   const role = effectiveRole();
-  const items = NAVS[role];
+  let items = NAVS[role];
+  if(role==='admin' && currentStaff.role!=='superadmin'){
+    items = items.filter(it=>it.id!=='rekam');
+  }
   const activeKey = role + 'View';
   el.innerHTML = items.map(it=>{
     const active = ui[activeKey]===it.id;
@@ -563,30 +565,35 @@ async function renderPetugasResep(){
 
 async function renderPetugasAntrian(){
   const { data: visits, error } = await sb.from('visits')
-    .select('*, patients(nama, no_rm)')
+    .select('*, patients(nama, no_rm), dokter:dokter_id(nama, poli_id)')
     .eq('tanggal', todayStr())
     .order('no_antrian');
   if(error) throw error;
   cache.visits = visits || [];
 
-  const board = POLI.map(p=>{
-    const vs = cache.visits.filter(v=>v.poli_id===p.id);
+  const { data: dokters } = await sb.from('staff').select('*').eq('role','dokter').eq('aktif', true).order('nama');
+  cache.dokters = dokters || [];
+
+  const board = cache.dokters.map(d=>{
+    const poli = poliById(d.poli_id);
+    const vs = cache.visits.filter(v=>v.dokter_id===d.id);
     const waiting = vs.filter(v=>v.status==='menunggu').length;
     const serving = vs.find(v=>v.status==='dipanggil');
     return `<div class="queue-slot">
-      <div class="poli-name">${esc(p.nama)}</div>
+      <div class="poli-name">${esc(d.nama)} · ${esc(poli.nama)}</div>
       <div class="now-serving">${serving? '#'+serving.no_antrian : '—'}</div>
       <div class="waiting-count">${waiting} pasien menunggu</div>
     </div>`;
-  }).join('');
+  }).join('') || `<div class="empty">Belum ada dokter aktif terdaftar.</div>`;
 
   const rows = cache.visits.filter(v=>v.status!=='selesai').map(v=>{
     const p = poliById(v.poli_id);
+    const dokterNama = v.dokter ? v.dokter.nama : '-';
     return `<div class="list-row">
       <div class="queue-num mono">${v.no_antrian}</div>
       <div class="row-main">
         <div class="row-name">${esc(v.patients.nama)} <span style="color:var(--ink-faint);font-weight:400;">· ${esc(v.patients.no_rm)}</span></div>
-        <div class="row-sub">${esc(p.nama)} — ${esc(v.keluhan_awal)}</div>
+        <div class="row-sub">${esc(p.nama)} · ${esc(dokterNama)} — ${esc(v.keluhan_awal)}</div>
       </div>
       <span class="badge ${v.status==='menunggu'?'badge-wait':'badge-called'}">${v.status==='menunggu'?'Menunggu':'Dipanggil'}</span>
     </div>`;
@@ -657,10 +664,11 @@ function renderDaftarPanel(){
         <div><div class="title">Riwayat Alergi Tercatat</div>
         <div class="items">${alergi.map(a=>esc(a.nama_alergen)+' — '+esc(a.reaksi||'')).join('; ')}</div></div>
       </div>` : `<div class="allergy-none">Tidak ada riwayat alergi tercatat.</div>`}
-    <div class="field"><label>Poliklinik tujuan</label>
-      <select id="newVisitPoli">${POLI.map(p=>{
-        const dok = cache.dokters.find(d=>d.poli_id===p.id);
-        return `<option value="${p.id}">${esc(p.nama)}${dok? ' — '+esc(dok.nama):''}</option>`;
+    <div class="field"><label>Poliklinik &amp; Dokter tujuan</label>
+      <select id="newVisitDokter">${POLI.map(p=>{
+        const doks = cache.dokters.filter(d=>d.poli_id===p.id);
+        if(!doks.length) return `<optgroup label="${esc(p.nama)}"><option disabled>Belum ada dokter aktif</option></optgroup>`;
+        return `<optgroup label="${esc(p.nama)}">${doks.map(d=>`<option value="${d.id}">${esc(d.nama)}</option>`).join('')}</optgroup>`;
       }).join('')}</select>
     </div>
     <div class="field"><label>Keluhan awal</label><textarea id="newVisitKeluhan" placeholder="Keluhan yang disampaikan pasien..."></textarea></div>
@@ -703,17 +711,19 @@ async function createPatient(){
 }
 async function createVisit(){
   const pat = cache.patients.find(p=>p.id===daftarState.patientId);
-  const poliId = parseInt(document.getElementById('newVisitPoli').value);
+  const dokterId = document.getElementById('newVisitDokter').value;
+  const dok = cache.dokters.find(d=>d.id===dokterId);
+  if(!dok){ showToast('Pilih dokter tujuan terlebih dahulu'); return; }
+  const poliId = dok.poli_id;
   const keluhan = document.getElementById('newVisitKeluhan').value.trim();
   if(!keluhan){ showToast('Keluhan awal wajib diisi'); return; }
 
   const { data: existing } = await sb.from('visits').select('no_antrian')
-    .eq('poli_id', poliId).eq('tanggal', todayStr()).order('no_antrian', {ascending:false}).limit(1);
+    .eq('dokter_id', dokterId).eq('tanggal', todayStr()).order('no_antrian', {ascending:false}).limit(1);
   const noAntrian = (existing && existing.length) ? existing[0].no_antrian + 1 : 1;
-  const dok = cache.dokters.find(d=>d.poli_id===poliId);
 
   const { data: visit, error } = await sb.from('visits').insert({
-    patient_id: pat.id, poli_id: poliId, dokter_id: dok? dok.id : null,
+    patient_id: pat.id, poli_id: poliId, dokter_id: dokterId,
     no_antrian: noAntrian, status: 'menunggu', keluhan_awal: keluhan, dicatat_oleh: currentStaff.id,
   }).select().single();
   if(error){ showToast('Gagal daftarkan kunjungan: '+error.message); return; }
@@ -727,7 +737,7 @@ async function createVisit(){
     berat_badan: bt.bb, tinggi_badan: bt.tb,
   });
 
-  showToast('Nomor antrian '+noAntrian+' diberikan untuk '+poliById(poliId).nama);
+  showToast('Nomor antrian '+noAntrian+' diberikan untuk '+esc(dok.nama));
   ui.petugasView = 'antrian';
   renderSidebar();
   renderMain();
@@ -740,12 +750,26 @@ async function renderDokter(){
   if(ui.activeVisitId) return await renderPemeriksaan(ui.activeVisitId);
 
   const isSuper = currentStaff.role === 'superadmin';
-  const poliId = isSuper ? ui.superDokterPoli : currentStaff.poli_id;
-  const poli = poliById(poliId);
+  let dokterId, poli;
+
+  if(isSuper){
+    const { data: dokters } = await sb.from('staff').select('*').eq('role','dokter').eq('aktif', true).order('nama');
+    cache.dokters = dokters || [];
+    if(!cache.dokters.length){
+      return `<div class="page-head"><h1>Antrian Dokter</h1></div><div class="empty">Belum ada dokter aktif terdaftar.</div>`;
+    }
+    ui.superDokterId = ui.superDokterId && cache.dokters.find(d=>d.id===ui.superDokterId) ? ui.superDokterId : cache.dokters[0].id;
+    dokterId = ui.superDokterId;
+    const dokObj = cache.dokters.find(d=>d.id===dokterId);
+    poli = poliById(dokObj.poli_id);
+  } else {
+    dokterId = currentStaff.id;
+    poli = poliById(currentStaff.poli_id);
+  }
 
   const { data: visits, error } = await sb.from('visits')
     .select('*, patients(nama, patient_allergies(*))')
-    .eq('poli_id', poliId).eq('tanggal', todayStr())
+    .eq('dokter_id', dokterId).eq('tanggal', todayStr())
     .neq('status','selesai').order('no_antrian');
   if(error) throw error;
   cache.visits = visits || [];
@@ -761,19 +785,19 @@ async function renderDokter(){
       <span class="badge ${v.status==='menunggu'?'badge-wait':'badge-called'}">${v.status==='menunggu'?'Menunggu':'Dipanggil'}</span>
       <button class="btn btn-primary btn-sm" onclick="callVisit('${v.id}')">${v.status==='menunggu'?'Panggil':'Buka'}</button>
     </div>`;
-  }).join('') || `<div class="empty">Tidak ada pasien menunggu di poli ini.</div>`;
+  }).join('') || `<div class="empty">Tidak ada pasien menunggu untuk dokter ini.</div>`;
 
-  const poliTabs = isSuper ? `<div class="poli-tabs">${POLI.map(p=>
-    `<button class="poli-tab ${p.id===poliId?'active':''}" onclick="setSuperDokterPoli(${p.id})">${esc(p.nama)}</button>`).join('')}</div>` : '';
+  const dokterTabs = isSuper ? `<div class="poli-tabs">${cache.dokters.map(d=>
+    `<button class="poli-tab ${d.id===dokterId?'active':''}" onclick="setSuperDokterId('${d.id}')">${esc(d.nama)} · ${esc(poliById(d.poli_id).nama)}</button>`).join('')}</div>` : '';
 
   return `
-    <div class="page-head"><h1>Antrian Poli — ${esc(poli.nama)}</h1><p>${esc(currentStaff.nama)}${isSuper?' (bertindak sebagai dokter)':''}</p></div>
-    ${poliTabs}
+    <div class="page-head"><h1>Antrian — ${esc(isSuper? cache.dokters.find(d=>d.id===dokterId).nama : currentStaff.nama)}</h1><p>${esc(poli.nama)}${isSuper?' (bertindak sebagai dokter)':''}</p></div>
+    ${dokterTabs}
     <div class="card"><h3>Daftar Tunggu</h3><div class="list">${rows}</div></div>
   `;
 }
-function setSuperDokterPoli(id){
-  ui.superDokterPoli = id;
+function setSuperDokterId(id){
+  ui.superDokterId = id;
   renderMain();
 }
 async function callVisit(id){
@@ -1269,23 +1293,312 @@ async function renderKasirLunas(){
    ========================================================= */
 async function renderAdmin(){
   if(ui.adminView==='staff') return await renderAdminStaff();
+  if(ui.adminView==='pasien') return await renderAdminPasien();
+  if(ui.adminView==='rekam') return await renderAdminRekam();
   if(ui.adminView==='obat') return await renderAdminObat();
   return await renderAdminLaporan();
 }
+
+/* ---------------------------------------------------------
+   KELOLA STAFF — tambah/edit langsung dari aplikasi
+   (akun login tetap dibuat di Supabase Authentication dulu,
+   di sini cuma menghubungkan UID akun itu ke data staff)
+   --------------------------------------------------------- */
+let staffEditState = { id: null };
 async function renderAdminStaff(){
   const { data: staff, error } = await sb.from('staff').select('*').order('nama');
   if(error) throw error;
-  const rows = (staff||[]).map(s=>{
+  cache.staffAdmin = staff || [];
+  staffEditState = { id: null };
+  return `
+    <div class="page-head"><h1>Kelola Staff</h1><p>Tambah staff baru atau ubah data staff yang sudah ada.</p></div>
+    <div class="grid grid-2" style="align-items:start;">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h3 style="margin:0;">Staff Terdaftar</h3>
+          <button class="btn btn-amber btn-sm" onclick="openStaffForm(null)">+ Tambah Staff</button>
+        </div>
+        <div class="list" id="staffList">${renderStaffRows()}</div>
+      </div>
+      <div class="card" id="staffFormPanel"><div class="empty">Pilih staff untuk diedit, atau klik "+ Tambah Staff".</div></div>
+    </div>
+  `;
+}
+function renderStaffRows(){
+  return cache.staffAdmin.map(s=>{
     const poliName = s.poli_id ? poliById(s.poli_id).nama : '-';
     return `<div class="list-row">
       <div class="row-main"><div class="row-name">${esc(s.nama)}</div><div class="row-sub">${esc(s.role)}${poliName!=='-'?' · '+esc(poliName):''}</div></div>
       <span class="badge ${s.aktif?'badge-paid':'badge-unpaid'}">${s.aktif?'Aktif':'Nonaktif'}</span>
+      <button class="btn btn-ghost btn-sm" onclick="openStaffForm('${s.id}')">Edit</button>
     </div>`;
-  }).join('');
-  return `
-    <div class="page-head"><h1>Kelola Staff</h1><p>Daftar petugas, dokter, dan kasir yang punya akses ke sistem. Tambah staff baru lewat menu Authentication &amp; tabel staff di Supabase.</p></div>
-    <div class="card"><h3>Staff Terdaftar</h3><div class="list">${rows}</div></div>
+  }).join('') || `<div class="empty">Belum ada staff.</div>`;
+}
+function openStaffForm(id){
+  staffEditState.id = id;
+  const s = id ? cache.staffAdmin.find(x=>x.id===id) : null;
+  document.getElementById('staffFormPanel').innerHTML = `
+    <h3>${s? 'Edit Staff — '+esc(s.nama) : 'Tambah Staff Baru'}</h3>
+    ${!s? `<p style="font-size:12px;color:var(--ink-faint);margin-bottom:12px;">
+      Buat dulu akun login (email+password) lewat Supabase &gt; Authentication &gt; Add user,
+      lalu copy <b>User UID</b>-nya dan paste di sini.</p>` : ''}
+    ${!s? `<div class="field"><label>Auth User ID (UID dari Supabase Authentication)</label><input id="stAuthId" placeholder="misal: a1b2c3d4-e5f6-..."></div>` : ''}
+    <div class="field"><label>Nama lengkap</label><input id="stNama" value="${s?esc(s.nama):''}" placeholder="Nama staff"></div>
+    <div class="field-row">
+      <div class="field"><label>Role</label>
+        <select id="stRole" onchange="togglePoliField()">
+          ${['petugas','dokter','kasir','admin','superadmin'].map(r=>`<option value="${r}" ${s&&s.role===r?'selected':''}>${r}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>Nomor SIP/STR (khusus dokter)</label><input id="stNoStr" value="${s?esc(s.no_str||''):''}" placeholder="777/DU/2002"></div>
+    </div>
+    <div class="field" id="stPoliField" style="display:${s&&s.role==='dokter'?'block':'none'};">
+      <label>Poliklinik (khusus dokter)</label>
+      <select id="stPoli">${POLI.map(p=>`<option value="${p.id}" ${s&&s.poli_id===p.id?'selected':''}>${esc(p.nama)}</option>`).join('')}</select>
+    </div>
+    <div class="field" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="stAktif" style="width:auto;" ${(!s || s.aktif)?'checked':''}>
+      <label style="margin:0;">Aktif (bisa login &amp; dipakai sistem)</label>
+    </div>
+    <button class="btn btn-primary" onclick="saveStaff()">Simpan</button>
+    ${s? `<button class="btn btn-ghost" onclick="staffEditState.id=null; document.getElementById('staffFormPanel').innerHTML='<div class=\\'empty\\'>Pilih staff untuk diedit, atau klik \\'+ Tambah Staff\\'.</div>';">Batal</button>` : ''}
   `;
+  // set initial poli field visibility correctly on first render
+  setTimeout(togglePoliField, 0);
+}
+function togglePoliField(){
+  const role = document.getElementById('stRole').value;
+  document.getElementById('stPoliField').style.display = (role==='dokter') ? 'block' : 'none';
+}
+async function saveStaff(){
+  const nama = document.getElementById('stNama').value.trim();
+  if(!nama){ showToast('Nama wajib diisi'); return; }
+  const role = document.getElementById('stRole').value;
+  const payload = {
+    nama, role,
+    no_str: document.getElementById('stNoStr').value.trim() || null,
+    poli_id: role==='dokter' ? parseInt(document.getElementById('stPoli').value) : null,
+    aktif: document.getElementById('stAktif').checked,
+  };
+  let error;
+  if(staffEditState.id){
+    ({ error } = await sb.from('staff').update(payload).eq('id', staffEditState.id));
+  } else {
+    const authId = document.getElementById('stAuthId').value.trim();
+    if(!authId){ showToast('Auth User ID wajib diisi untuk staff baru'); return; }
+    payload.auth_user_id = authId;
+    ({ error } = await sb.from('staff').insert(payload));
+  }
+  if(error){ showToast('Gagal simpan staff: '+error.message); return; }
+  showToast('Data staff tersimpan');
+  renderMain();
+}
+
+/* ---------------------------------------------------------
+   DATA PASIEN — edit data demografis pasien
+   --------------------------------------------------------- */
+let pasienEditState = { id: null };
+async function renderAdminPasien(){
+  const { data: patients, error } = await sb.from('patients').select('*').order('nama');
+  if(error) throw error;
+  cache.pasienAdmin = patients || [];
+  pasienEditState = { id: null };
+  return `
+    <div class="page-head"><h1>Data Pasien</h1><p>Cari dan perbaiki data pasien yang sudah tersimpan.</p></div>
+    <div class="grid grid-2" style="align-items:start;">
+      <div class="card">
+        <h3>Semua Pasien (${cache.pasienAdmin.length})</h3>
+        <input placeholder="Cari nama atau NIK..." style="margin-bottom:12px;" oninput="filterPasienAdmin(this.value)">
+        <div class="list" id="pasienAdminList">${renderPasienAdminRows(cache.pasienAdmin)}</div>
+      </div>
+      <div class="card" id="pasienFormPanel"><div class="empty">Pilih pasien di sebelah kiri untuk diedit.</div></div>
+    </div>
+  `;
+}
+function renderPasienAdminRows(list){
+  return list.map(p=>`
+    <div class="list-row">
+      <div class="row-main"><div class="row-name">${esc(p.nama)}</div><div class="row-sub">${esc(p.no_rm)} · ${esc(p.nik||'-')}</div></div>
+      <button class="btn btn-ghost btn-sm" onclick="openPasienForm('${p.id}')">Edit</button>
+    </div>`).join('') || `<div class="empty">Pasien tidak ditemukan.</div>`;
+}
+function filterPasienAdmin(q){
+  q = q.toLowerCase();
+  const filtered = cache.pasienAdmin.filter(p=>p.nama.toLowerCase().includes(q) || (p.nik||'').toLowerCase().includes(q));
+  document.getElementById('pasienAdminList').innerHTML = renderPasienAdminRows(filtered);
+}
+function openPasienForm(id){
+  pasienEditState.id = id;
+  const p = cache.pasienAdmin.find(x=>x.id===id);
+  document.getElementById('pasienFormPanel').innerHTML = `
+    <h3>Edit Pasien — ${esc(p.nama)}</h3>
+    <p style="font-size:12px;color:var(--ink-faint);margin-bottom:12px;">No. RM: ${esc(p.no_rm)} (tidak bisa diubah)</p>
+    <div class="field"><label>Nama lengkap</label><input id="pdNama" value="${esc(p.nama)}"></div>
+    <div class="field-row">
+      <div class="field"><label>NIK</label><input id="pdNik" value="${esc(p.nik||'')}"></div>
+      <div class="field"><label>Tanggal lahir</label><input id="pdTgl" type="date" value="${p.tgl_lahir||''}"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Jenis kelamin</label>
+        <select id="pdJk"><option value="P" ${p.jenis_kelamin==='P'?'selected':''}>Perempuan</option><option value="L" ${p.jenis_kelamin==='L'?'selected':''}>Laki-laki</option></select>
+      </div>
+      <div class="field"><label>No. HP</label><input id="pdHp" value="${esc(p.no_hp||'')}"></div>
+    </div>
+    <div class="field"><label>Alamat</label><textarea id="pdAlamat">${esc(p.alamat||'')}</textarea></div>
+    <div class="field-row">
+      <div class="field"><label>Kontak darurat</label><input id="pdKontakNama" value="${esc(p.nama_kontak_darurat||'')}"></div>
+      <div class="field"><label>No. HP kontak darurat</label><input id="pdKontakHp" value="${esc(p.no_hp_kontak_darurat||'')}"></div>
+    </div>
+    <button class="btn btn-primary" onclick="savePasien()">Simpan Perubahan</button>
+    <button class="btn btn-ghost" onclick="document.getElementById('pasienFormPanel').innerHTML='<div class=\\'empty\\'>Pilih pasien di sebelah kiri untuk diedit.</div>';">Batal</button>
+  `;
+}
+async function savePasien(){
+  const nama = document.getElementById('pdNama').value.trim();
+  if(!nama){ showToast('Nama wajib diisi'); return; }
+  const payload = {
+    nama,
+    nik: document.getElementById('pdNik').value.trim() || null,
+    tgl_lahir: document.getElementById('pdTgl').value || null,
+    jenis_kelamin: document.getElementById('pdJk').value,
+    no_hp: document.getElementById('pdHp').value.trim() || null,
+    alamat: document.getElementById('pdAlamat').value.trim() || null,
+    nama_kontak_darurat: document.getElementById('pdKontakNama').value.trim() || null,
+    no_hp_kontak_darurat: document.getElementById('pdKontakHp').value.trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await sb.from('patients').update(payload).eq('id', pasienEditState.id);
+  if(error){ showToast('Gagal simpan: '+error.message); return; }
+  showToast('Data pasien tersimpan');
+  renderMain();
+}
+
+/* ---------------------------------------------------------
+   REKAM MEDIS — edit SOAP & detail poli kunjungan yang sudah selesai
+   (khusus superadmin, sesuai RLS yang sudah diatur)
+   --------------------------------------------------------- */
+let rekamEditState = { visitId: null };
+async function renderAdminRekam(){
+  rekamEditState = { visitId: null };
+  return `
+    <div class="page-head"><h1>Rekam Medis</h1><p>Cari kunjungan pasien untuk melihat atau memperbaiki hasil pemeriksaan.</p></div>
+    <div class="card" style="margin-bottom:16px;">
+      <label>Cari nama pasien</label>
+      <div style="display:flex;gap:8px;">
+        <input id="rekamSearchInput" placeholder="Ketik nama pasien...">
+        <button class="btn btn-primary" onclick="searchRekamMedis()">Cari</button>
+      </div>
+    </div>
+    <div id="rekamResultArea"></div>
+  `;
+}
+async function searchRekamMedis(){
+  const q = document.getElementById('rekamSearchInput').value.trim();
+  const resultArea = document.getElementById('rekamResultArea');
+  if(!q){ showToast('Ketik nama pasien dulu'); return; }
+  resultArea.innerHTML = '<div class="loading">Mencari...</div>';
+  const { data: visits, error } = await sb.from('visits')
+    .select('*, patients!inner(nama, no_rm)')
+    .ilike('patients.nama', '%'+q+'%')
+    .eq('status', 'selesai')
+    .order('tanggal', {ascending:false})
+    .limit(30);
+  if(error){ resultArea.innerHTML = '<div class="empty">Gagal mencari: '+esc(error.message)+'</div>'; return; }
+  cache.rekamVisits = visits || [];
+  const rows = cache.rekamVisits.map(v=>{
+    const poli = poliById(v.poli_id);
+    return `<div class="list-row">
+      <div class="row-main">
+        <div class="row-name">${esc(v.patients.nama)} <span style="color:var(--ink-faint);font-weight:400;">· ${esc(v.patients.no_rm)}</span></div>
+        <div class="row-sub">${esc(poli.nama)} · ${esc(v.tanggal)} · Antrian #${v.no_antrian}</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="openRekamEdit('${v.id}')">Lihat / Edit</button>
+    </div>`;
+  }).join('') || `<div class="empty">Tidak ada kunjungan selesai untuk nama tersebut.</div>`;
+  resultArea.innerHTML = `<div class="card"><h3>Hasil Pencarian</h3><div class="list">${rows}</div></div>`;
+}
+async function openRekamEdit(visitId){
+  rekamEditState.visitId = visitId;
+  const resultArea = document.getElementById('rekamResultArea');
+  resultArea.innerHTML = '<div class="loading">Memuat rekam medis...</div>';
+
+  const v = cache.rekamVisits.find(x=>x.id===visitId);
+  const poli = poliById(v.poli_id);
+  const { data: medRec } = await sb.from('medical_records').select('*').eq('visit_id', visitId).maybeSingle();
+  let detail = null;
+  if(poli.kode==='kandungan'){ const {data} = await sb.from('obgyn_details').select('*').eq('visit_id',visitId).maybeSingle(); detail = data; }
+  else if(poli.kode==='mata'){ const {data} = await sb.from('mata_details').select('*').eq('visit_id',visitId).maybeSingle(); detail = data; }
+  else { const {data} = await sb.from('gigi_details').select('*').eq('visit_id',visitId).maybeSingle(); detail = data; }
+
+  let detailFields = '';
+  if(poli.kode==='kandungan'){
+    detailFields = `
+      <div class="section-title">Detail Kebidanan &amp; Kandungan</div>
+      <div class="field-row">
+        <div class="field"><label>GPA</label><input id="rdGpa" value="${detail?esc(detail.gpa||''):''}"></div>
+        <div class="field"><label>Usia kehamilan (minggu)</label><input id="rdUsia" type="number" value="${detail?detail.usia_kehamilan_minggu||'':''}"></div>
+      </div>
+      <div class="field"><label>Catatan USG</label><textarea id="rdUsg">${detail?esc(detail.catatan_usg||''):''}</textarea></div>
+    `;
+  } else if(poli.kode==='mata'){
+    detailFields = `
+      <div class="section-title">Detail Pemeriksaan Mata</div>
+      <div class="field-row">
+        <div class="field"><label>Visus OD</label><input id="rdVisusOd" value="${detail?esc(detail.visus_od||''):''}"></div>
+        <div class="field"><label>Visus OS</label><input id="rdVisusOs" value="${detail?esc(detail.visus_os||''):''}"></div>
+      </div>
+      <div class="field"><label>Segmen anterior / funduskopi</label><textarea id="rdFundus">${detail?esc(detail.catatan_funduskopi||''):''}</textarea></div>
+    `;
+  } else {
+    detailFields = `
+      <div class="section-title">Detail Pemeriksaan Gigi</div>
+      <div class="field"><label>Status gigi / diagnosa</label><textarea id="rdGigi">${detail?esc(detail.diagnosa_gigi||''):''}</textarea></div>
+    `;
+  }
+
+  resultArea.innerHTML = `
+    <button class="btn btn-ghost btn-sm" style="margin-bottom:12px;" onclick="searchRekamMedis()">&larr; Kembali ke hasil pencarian</button>
+    <div class="card">
+      <h3>${esc(v.patients.nama)} · ${esc(poli.nama)} · ${esc(v.tanggal)}</h3>
+      <div class="field"><label>Subjective</label><textarea id="rdS">${medRec?esc(medRec.subjective||''):''}</textarea></div>
+      <div class="field"><label>Objective</label><textarea id="rdO">${medRec?esc(medRec.objective||''):''}</textarea></div>
+      <div class="field"><label>Assessment</label><textarea id="rdA">${medRec?esc(medRec.assessment||''):''}</textarea></div>
+      <div class="field"><label>Plan</label><textarea id="rdP">${medRec?esc(medRec.plan||''):''}</textarea></div>
+      ${detailFields}
+      <button class="btn btn-primary" onclick="saveRekamEdit('${visitId}')">Simpan Perubahan</button>
+    </div>
+  `;
+}
+async function saveRekamEdit(visitId){
+  const v = cache.rekamVisits.find(x=>x.id===visitId);
+  const poli = poliById(v.poli_id);
+  const { error: e1 } = await sb.from('medical_records').upsert({
+    visit_id: visitId,
+    dokter_id: currentStaff.id,
+    subjective: document.getElementById('rdS').value,
+    objective: document.getElementById('rdO').value,
+    assessment: document.getElementById('rdA').value,
+    plan: document.getElementById('rdP').value,
+  }, { onConflict:'visit_id' });
+  if(e1){ showToast('Gagal simpan SOAP: '+e1.message); return; }
+
+  if(poli.kode==='kandungan'){
+    await sb.from('obgyn_details').upsert({
+      visit_id: visitId, gpa: document.getElementById('rdGpa').value,
+      usia_kehamilan_minggu: parseInt(document.getElementById('rdUsia').value)||null,
+      catatan_usg: document.getElementById('rdUsg').value,
+    }, { onConflict:'visit_id' });
+  } else if(poli.kode==='mata'){
+    await sb.from('mata_details').upsert({
+      visit_id: visitId, visus_od: document.getElementById('rdVisusOd').value, visus_os: document.getElementById('rdVisusOs').value,
+      catatan_funduskopi: document.getElementById('rdFundus').value,
+    }, { onConflict:'visit_id' });
+  } else {
+    await sb.from('gigi_details').upsert({
+      visit_id: visitId, diagnosa_gigi: document.getElementById('rdGigi').value,
+    }, { onConflict:'visit_id' });
+  }
+  showToast('Rekam medis berhasil diperbarui');
 }
 
 /* ---------------------------------------------------------
